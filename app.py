@@ -8,8 +8,7 @@ from scraper import scrape_products, extract_product_data, BraveAPIError, SEARCH
 from scoring import calculate_price_score
 from db import (
     init_db, create_user, get_user_by_email,
-    check_and_reset_monthly_usage, increment_scan_count, get_scan_limit,
-    save_scan, get_user_scans, get_scan_items, can_user_scan,
+    save_scan, get_user_scans, get_scan_items,
 )
 from auth import hash_password, verify_password
 
@@ -759,14 +758,6 @@ def page_dashboard():
         plan_label = "Pro ⭐" if user["plan"] == "pro" else "Gratuit"
         st.markdown(f"📋 Plan : **{plan_label}**")
 
-        scans_used = check_and_reset_monthly_usage(user["id"])
-        scan_limit = get_scan_limit(user["plan"])
-        if scan_limit is not None:
-            st.markdown(f"📊 Scans ce mois : **{scans_used}/{scan_limit}**")
-            st.progress(min(scans_used / scan_limit, 1.0))
-        else:
-            st.markdown(f"📊 Scans ce mois : **{scans_used}** (illimite)")
-
         st.divider()
 
         if st.button("Nouveau scan", type="primary", use_container_width=True):
@@ -791,19 +782,11 @@ def page_dashboard():
     st.title("📊 Tableau de bord")
     st.markdown(f"Bienvenue, **{user['display_name']}** !")
 
-    scans_used = check_and_reset_monthly_usage(user["id"])
-    scan_limit = get_scan_limit(user["plan"])
-
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     with col1:
         plan_label = "Pro ⭐" if user["plan"] == "pro" else "Gratuit"
         st.metric("Plan", plan_label)
     with col2:
-        if scan_limit is not None:
-            st.metric("Scans restants", f"{max(0, scan_limit - scans_used)}/{scan_limit}")
-        else:
-            st.metric("Scans ce mois", scans_used)
-    with col3:
         scans_history = get_user_scans(user["id"])
         st.metric("Total scans", len(scans_history))
 
@@ -864,15 +847,6 @@ def page_scan():
         plan_label = "Pro ⭐" if user["plan"] == "pro" else "Gratuit"
         st.markdown(f"📋 Plan : **{plan_label}**")
 
-        scans_used = check_and_reset_monthly_usage(user["id"])
-        scan_limit = get_scan_limit(user["plan"])
-        if scan_limit is not None:
-            remaining = max(0, scan_limit - scans_used)
-            st.markdown(f"📊 Scans restants : **{remaining}/{scan_limit}**")
-            st.progress(min(scans_used / scan_limit, 1.0))
-        else:
-            st.markdown(f"📊 Scans ce mois : **{scans_used}** (illimite)")
-
         st.divider()
 
         if st.button("Tableau de bord", use_container_width=True):
@@ -886,20 +860,11 @@ def page_scan():
 
     st.title("🔍 Nouveau scan")
 
-    scans_used = check_and_reset_monthly_usage(user["id"])
-    scan_limit = get_scan_limit(user["plan"])
-    can_scan = scan_limit is None or scans_used < scan_limit
-
     tab_auto, tab_manual = st.tabs(["Scan automatique", "Analyse manuelle d'URLs"])
 
     with tab_auto:
         if not api_key:
             st.warning("La cle API Brave Search n'est pas configuree sur le serveur.")
-        elif not can_scan:
-            st.warning(
-                f"Vous avez atteint la limite de {scan_limit} scans ce mois-ci. "
-                "Passez au plan Pro pour des scans illimites !"
-            )
         else:
             st.markdown(f"Lance une recherche sur **{len(SEARCH_QUERIES)} requetes** pour trouver les meilleurs produits whey du marche francais.")
             scan_button = st.button("🚀 Lancer le scan", type="primary", use_container_width=False)
@@ -930,18 +895,14 @@ def page_scan():
                     detail_text.empty()
 
                     if products:
-                        if not can_user_scan(user["id"], user["plan"]):
-                            status_container.warning("Limite de scans atteinte pour ce mois.")
-                        else:
-                            scan_id = save_scan(user["id"], products)
-                            increment_scan_count(user["id"])
-                            status_container.success(
-                                f"✅ {len(products)} produits trouves et sauvegardes ! (Scan #{scan_id})"
-                            )
+                        scan_id = save_scan(user["id"], products)
+                        status_container.success(
+                            f"✅ {len(products)} produits trouves et sauvegardes ! (Scan #{scan_id})"
+                        )
 
-                            df = pd.DataFrame(products)
-                            st.divider()
-                            render_results(df)
+                        df = pd.DataFrame(products)
+                        st.divider()
+                        render_results(df)
                     else:
                         status_container.warning("Aucun produit trouve.")
 
@@ -951,66 +912,57 @@ def page_scan():
                     status_container.error(f"Erreur API : {e}")
 
     with tab_manual:
-        if not can_scan:
-            st.warning(
-                f"Vous avez atteint la limite de {scan_limit} scans ce mois-ci."
-            )
-        else:
-            st.markdown("Entrez des URLs de pages produit (une par ligne) :")
-            urls_input = st.text_area(
-                "URLs de pages produit",
-                placeholder="https://www.myprotein.fr/...\nhttps://www.bulk.com/fr/...",
-                height=150,
-            )
+        st.markdown("Entrez des URLs de pages produit (une par ligne) :")
+        urls_input = st.text_area(
+            "URLs de pages produit",
+            placeholder="https://www.myprotein.fr/...\nhttps://www.bulk.com/fr/...",
+            height=150,
+        )
 
-            analyze_button = st.button("🔍 Analyser ces URLs", type="primary", key="manual_analyze")
+        analyze_button = st.button("🔍 Analyser ces URLs", type="primary", key="manual_analyze")
 
-            if analyze_button and urls_input.strip():
-                urls = [u.strip() for u in urls_input.strip().split("\n") if u.strip().startswith("http")]
+        if analyze_button and urls_input.strip():
+            urls = [u.strip() for u in urls_input.strip().split("\n") if u.strip().startswith("http")]
 
-                if not urls:
-                    st.warning("Aucune URL valide trouvee.")
+            if not urls:
+                st.warning("Aucune URL valide trouvee.")
+            else:
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+                products = []
+                completed_count = 0
+                total_count = len(urls)
+
+                with ThreadPoolExecutor(max_workers=8) as executor:
+                    futures = {executor.submit(extract_product_data, url): url for url in urls}
+                    for future in as_completed(futures):
+                        completed_count += 1
+                        url = futures[future]
+                        status_text.text(f"Extraction {completed_count}/{total_count} : {url[:80]}...")
+                        progress_bar.progress(completed_count / total_count)
+                        try:
+                            result = future.result()
+                            if result:
+                                products.append(result)
+                        except Exception:
+                            pass
+
+                progress_bar.empty()
+                status_text.empty()
+
+                if products:
+                    scan_id = save_scan(user["id"], products)
+                    st.success(
+                        f"✅ {len(products)} produits extraits et sauvegardes ! (Scan #{scan_id})"
+                    )
+
+                    df = pd.DataFrame(products)
+                    st.divider()
+                    render_results(df)
                 else:
-                    progress_bar = st.progress(0)
-                    status_text = st.empty()
-
-                    from concurrent.futures import ThreadPoolExecutor, as_completed
-                    products = []
-                    completed_count = 0
-                    total_count = len(urls)
-
-                    with ThreadPoolExecutor(max_workers=8) as executor:
-                        futures = {executor.submit(extract_product_data, url): url for url in urls}
-                        for future in as_completed(futures):
-                            completed_count += 1
-                            url = futures[future]
-                            status_text.text(f"Extraction {completed_count}/{total_count} : {url[:80]}...")
-                            progress_bar.progress(completed_count / total_count)
-                            try:
-                                result = future.result()
-                                if result:
-                                    products.append(result)
-                            except Exception:
-                                pass
-
-                    progress_bar.empty()
-                    status_text.empty()
-
-                    if products:
-                        if not can_user_scan(user["id"], user["plan"]):
-                            st.warning("Limite de scans atteinte pour ce mois.")
-                        else:
-                            scan_id = save_scan(user["id"], products)
-                            increment_scan_count(user["id"])
-                            st.success(
-                                f"✅ {len(products)} produits extraits et sauvegardes ! (Scan #{scan_id})"
-                            )
-
-                            df = pd.DataFrame(products)
-                            st.divider()
-                            render_results(df)
-                    else:
-                        st.warning("Aucune donnee produit extraite.")
+                    st.warning("Aucune donnee produit extraite.")
 
 
 # ── ROUTER ──
