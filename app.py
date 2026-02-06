@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+import time
 from datetime import datetime
 
 from scraper import scrape_products, extract_product_data, BraveAPIError, SEARCH_QUERIES
@@ -15,7 +16,7 @@ st.set_page_config(
 st.title("Comparateur de Proteines en Poudre")
 st.markdown("Analyse automatique du marche des proteines whey en France")
 
-api_key = os.environ.get("BRAVE_SEARCH_API_KEY", "")
+api_key = os.environ.get("BRAVE_API_KEY", "") or os.environ.get("BRAVE_SEARCH_API_KEY", "")
 
 with st.sidebar:
     st.header("Configuration")
@@ -109,7 +110,7 @@ with tab_auto:
                 st.session_state.scan_done = True
                 status_container.success(f"{len(products)} produits trouves et analyses !")
             else:
-                status_container.warning("Aucun produit trouve. Les pages visitees ne contenaient pas de donnees produit structurees (JSON-LD).")
+                status_container.warning("Aucun produit trouve. Les pages visitees ne contenaient pas de donnees produit exploitables.")
                 st.session_state.scan_done = False
 
         except BraveAPIError as e:
@@ -150,7 +151,6 @@ with tab_manual:
             status_text = st.empty()
             products = []
 
-            import time
             for i, url in enumerate(urls):
                 status_text.text(f"Extraction {i+1}/{len(urls)} : {url[:80]}...")
                 progress_bar.progress((i + 1) / len(urls))
@@ -171,29 +171,150 @@ with tab_manual:
             else:
                 st.warning(
                     "Aucune donnee produit extraite. "
-                    "Les pages ne contiennent peut-etre pas de donnees structurees JSON-LD (schema.org Product)."
+                    "Les pages ne contiennent peut-etre pas de donnees structurees exploitables."
                 )
+
+
+def score_color(score):
+    if score is None or pd.isna(score):
+        return "#888888"
+    if score >= 70:
+        return "#2ecc71"
+    if score >= 40:
+        return "#f39c12"
+    return "#e74c3c"
+
+
+def score_label(score):
+    if score is None or pd.isna(score):
+        return "N/A"
+    return f"{score:.0f}/100"
+
+
+def data_status_icon(value):
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return "⚠️"
+    return ""
+
 
 if st.session_state.products_df is not None and st.session_state.scan_done:
     df = st.session_state.products_df
 
     st.divider()
+    st.subheader(f"Resultats : {len(df)} produits analyses")
 
-    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-    with col_m1:
+    col_summary1, col_summary2, col_summary3 = st.columns(3)
+    with col_summary1:
         st.metric("Produits trouves", len(df))
-    with col_m2:
-        avg_score = df["score_global"].dropna().mean()
-        st.metric("Score moyen", f"{avg_score:.1f}" if pd.notna(avg_score) else "N/A")
-    with col_m3:
-        avg_price = df["prix_par_kg"].dropna().mean()
-        st.metric("Prix moyen /kg", f"{avg_price:.2f} EUR" if pd.notna(avg_price) else "N/A")
-    with col_m4:
-        avg_prot = df["proteines_100g"].dropna().mean()
-        st.metric("Proteines moy. /100g", f"{avg_prot:.1f}g" if pd.notna(avg_prot) else "N/A")
+    with col_summary2:
+        with_score = df["score_global"].dropna().shape[0]
+        st.metric("Avec score complet", f"{with_score}/{len(df)}")
+    with col_summary3:
+        without_data = len(df) - with_score
+        st.metric("Donnees partielles", without_data)
 
     st.divider()
-    st.subheader("Classement des produits")
+    st.subheader("Classement par produit")
+
+    sorted_df = df.sort_values("score_global", ascending=False, na_position="last")
+
+    for rank, (_, row) in enumerate(sorted_df.iterrows(), 1):
+        s_global = row.get("score_global")
+        s_prix = row.get("score_prix")
+        s_nutri = row.get("score_nutrition")
+        color = score_color(s_global)
+
+        nom = row.get("nom", "Produit inconnu")
+        if len(nom) > 80:
+            nom = nom[:77] + "..."
+
+        with st.container():
+            col_rank, col_info, col_scores = st.columns([0.8, 4, 3])
+
+            with col_rank:
+                st.markdown(
+                    f"<div style='text-align:center;padding-top:10px;'>"
+                    f"<span style='font-size:2em;font-weight:bold;color:{color};'>#{rank}</span>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+
+            with col_info:
+                marque = row.get("marque", "")
+                marque_text = f" — {marque}" if marque else ""
+                st.markdown(f"**{nom}**{marque_text}")
+
+                details = []
+                prix = row.get("prix")
+                devise = row.get("devise", "EUR")
+                poids = row.get("poids_kg")
+                prix_kg = row.get("prix_par_kg")
+                prot = row.get("proteines_100g")
+
+                if pd.notna(prix):
+                    details.append(f"💰 {prix:.2f} {devise}")
+                else:
+                    details.append("💰 Prix : inconnu")
+
+                if pd.notna(poids):
+                    details.append(f"📦 {poids:.2f} kg")
+                else:
+                    details.append("📦 Poids : inconnu")
+
+                if pd.notna(prix_kg):
+                    details.append(f"📊 {prix_kg:.2f} EUR/kg")
+                else:
+                    details.append("📊 Prix/kg : inconnu")
+
+                if pd.notna(prot):
+                    details.append(f"🥩 {prot:.1f}g prot/100g")
+                else:
+                    details.append("🥩 Proteines : inconnu")
+
+                st.markdown(" | ".join(details))
+
+                url = row.get("url", "")
+                if url:
+                    st.markdown(f"[Voir le produit]({url})")
+
+            with col_scores:
+                sc1, sc2, sc3 = st.columns(3)
+                with sc1:
+                    st.markdown(
+                        f"<div style='text-align:center;'>"
+                        f"<div style='font-size:0.8em;color:#666;'>Prix</div>"
+                        f"<div style='font-size:1.4em;font-weight:bold;color:{score_color(s_prix)};'>{score_label(s_prix)}</div>"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+                with sc2:
+                    st.markdown(
+                        f"<div style='text-align:center;'>"
+                        f"<div style='font-size:0.8em;color:#666;'>Nutrition</div>"
+                        f"<div style='font-size:1.4em;font-weight:bold;color:{score_color(s_nutri)};'>{score_label(s_nutri)}</div>"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+                with sc3:
+                    st.markdown(
+                        f"<div style='text-align:center;'>"
+                        f"<div style='font-size:0.8em;color:#666;'>Global</div>"
+                        f"<div style='font-size:1.8em;font-weight:bold;color:{color};'>{score_label(s_global)}</div>"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+
+                if pd.isna(s_global):
+                    missing = []
+                    if pd.isna(prix_kg):
+                        missing.append("prix/kg")
+                    if pd.isna(prot):
+                        missing.append("proteines")
+                    st.caption(f"⚠️ Score incomplet : donnees manquantes ({', '.join(missing)})")
+
+            st.divider()
+
+    st.subheader("Tableau complet")
 
     display_cols = [
         "nom", "marque", "prix", "devise", "poids_kg",
@@ -216,21 +337,12 @@ if st.session_state.products_df is not None and st.session_state.scan_done:
         "disponibilite": st.column_config.TextColumn("Dispo"),
     }
 
-    sorted_df = df.sort_values("score_global", ascending=False, na_position="last")
-
     st.dataframe(
         sorted_df[existing_cols],
         column_config=column_config,
         use_container_width=True,
         hide_index=True,
     )
-
-    st.divider()
-    st.subheader("Liens vers les produits")
-    for _, row in sorted_df.iterrows():
-        score_text = f"Score: {row['score_global']:.0f}" if pd.notna(row.get("score_global")) else "Score: N/A"
-        price_text = f"{row['prix']:.2f} {row.get('devise', 'EUR')}" if pd.notna(row.get("prix")) else "Prix N/A"
-        st.markdown(f"- **{row['nom'][:80]}** -- {price_text} -- {score_text} -- [Voir le produit]({row['url']})")
 
     st.divider()
     st.subheader("Exporter les donnees")

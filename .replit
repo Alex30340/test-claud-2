@@ -34,3 +34,8 @@ outputType = "webview"
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[userenv]
+
+[userenv.shared]
+BRAVE_API_KEY = "BSAtIZRmoUdUOdOSLdIfER4_IpWSEji"

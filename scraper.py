@@ -17,18 +17,23 @@ class BraveAPIError(Exception):
     pass
 
 SEARCH_QUERIES = [
-    "whey protein achat",
-    "whey isolate prix",
-    "whey hydrolysate achat",
-    "protéine whey 1kg prix",
-    "clear whey isolate achat",
-    "protéine musculation whey prix",
+    "whey protein 1kg prix EUR achat",
+    "whey isolate prix fiche produit",
+    "whey hydrolysate achat en ligne",
+    "impact whey protein myprotein prix",
+    "clear whey isolate prix achat",
+    "optimum nutrition gold standard whey prix",
+    "bulk powders whey protein prix",
+    "scitec nutrition whey protein prix",
+    "eric favre whey protein prix",
+    "foodspring whey protein prix",
 ]
 
 EXCLUDED_DOMAINS = [
     "youtube.com", "facebook.com", "instagram.com", "twitter.com", "x.com",
     "tiktok.com", "reddit.com", "forum", "blog", "wikipedia.org",
     "pinterest.com", "linkedin.com", "quora.com",
+    "amazon.fr", "amazon.com",
 ]
 
 EXCLUDED_PATH_KEYWORDS = [
@@ -36,7 +41,7 @@ EXCLUDED_PATH_KEYWORDS = [
     "video", "news", "actualite",
 ]
 
-REQUEST_DELAY = 1.5
+REQUEST_DELAY = 1.0
 HTTP_TIMEOUT = 15.0
 
 
@@ -56,7 +61,7 @@ def is_product_url(url: str) -> bool:
     return True
 
 
-def search_brave(api_key: str, query: str, count: int = 10) -> list[str]:
+def search_brave(api_key: str, query: str, count: int = 15) -> list[str]:
     url = "https://api.search.brave.com/res/v1/web/search"
     headers = {
         "Accept": "application/json",
@@ -178,9 +183,30 @@ def parse_protein(text: str) -> float | None:
     return None
 
 
+def extract_og_meta(soup: BeautifulSoup) -> dict:
+    meta = {}
+    for tag in soup.find_all("meta"):
+        prop = tag.get("property", "") or tag.get("name", "")
+        content = tag.get("content", "")
+        if prop and content:
+            meta[prop.lower()] = content
+    return meta
+
+
+def extract_microdata(soup: BeautifulSoup) -> dict:
+    data = {}
+    for tag in soup.find_all(attrs={"itemprop": True}):
+        prop = tag.get("itemprop", "")
+        value = tag.get("content", "") or tag.get("value", "") or tag.get_text(strip=True)
+        if prop and value:
+            data[prop.lower()] = value
+    return data
+
+
 def extract_product_data(url: str) -> dict | None:
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
     }
 
@@ -191,47 +217,114 @@ def extract_product_data(url: str) -> dict | None:
 
         soup = BeautifulSoup(response.text, "lxml")
         jsonld = extract_jsonld(soup)
+        og = extract_og_meta(soup)
+        microdata = extract_microdata(soup)
 
-        if not jsonld:
+        name = ""
+        brand = ""
+        price = None
+        currency = "EUR"
+        availability = ""
+
+        if jsonld:
+            name = jsonld.get("name", "")
+            brand_data = jsonld.get("brand", {})
+            brand = brand_data.get("name", "") if isinstance(brand_data, dict) else str(brand_data)
+
+            offers = jsonld.get("offers", {})
+            if isinstance(offers, list):
+                offers = offers[0] if offers else {}
+
+            price = parse_price(offers.get("price"))
+            currency = offers.get("priceCurrency", "EUR")
+            availability = offers.get("availability", "")
+            if availability:
+                availability = availability.split("/")[-1]
+
+        if not name:
+            name = og.get("og:title", "") or microdata.get("name", "")
+        if not name:
+            title_tag = soup.find("title")
+            name = title_tag.get_text(strip=True) if title_tag else ""
+        if not brand:
+            brand = og.get("product:brand", "") or microdata.get("brand", "")
+        if price is None:
+            price = parse_price(og.get("product:price:amount", "")) or parse_price(microdata.get("price", ""))
+        if not currency or currency == "EUR":
+            currency = og.get("product:price:currency", "EUR") or microdata.get("pricecurrency", "EUR")
+        if not availability:
+            availability = og.get("product:availability", "") or microdata.get("availability", "")
+            if availability:
+                availability = availability.split("/")[-1]
+
+        if not name or price is None:
+            html_price = None
+            for cls in ["price", "product-price", "prix", "current-price"]:
+                el = soup.find(class_=re.compile(cls, re.I))
+                if el:
+                    html_price = parse_price(el.get_text())
+                    if html_price:
+                        break
+            if html_price and price is None:
+                price = html_price
+
+        if not name and price is None:
             return None
 
-        name = jsonld.get("name", "")
-        brand_data = jsonld.get("brand", {})
-        brand = brand_data.get("name", "") if isinstance(brand_data, dict) else str(brand_data)
+        bad_titles = ["amazon.fr", "amazon", "decathlon", "cdiscount", "google"]
+        if name and name.strip().lower() in bad_titles:
+            return None
+        if name and len(name.strip()) < 5:
+            return None
+        if not name or not name.strip():
+            name = "Produit inconnu"
 
-        offers = jsonld.get("offers", {})
-        if isinstance(offers, list):
-            offers = offers[0] if offers else {}
+        all_text = (name + " " + (jsonld.get("description", "") if jsonld else "")).lower()
 
-        price = parse_price(offers.get("price"))
-        currency = offers.get("priceCurrency", "EUR")
-        availability = offers.get("availability", "")
-        if availability:
-            availability = availability.split("/")[-1]
-
-        weight = parse_weight(name) or parse_weight(jsonld.get("description", ""))
-        weight_str = jsonld.get("weight", "")
-        if not weight and weight_str:
+        weight = parse_weight(all_text)
+        if not weight and jsonld:
+            weight_str = jsonld.get("weight", "")
             if isinstance(weight_str, dict):
                 weight_str = weight_str.get("value", "")
             weight = parse_weight(str(weight_str))
+        if not weight:
+            page_text = soup.get_text().lower()
+            weight_match = re.search(r"(\d+(?:[.,]\d+)?)\s*kg", page_text)
+            if weight_match:
+                w = float(weight_match.group(1).replace(",", "."))
+                if 0.1 <= w <= 25:
+                    weight = w
+            if not weight:
+                weight_match = re.search(r"(\d{3,5})\s*g(?:r|ramme)?", page_text)
+                if weight_match:
+                    g = float(weight_match.group(1))
+                    if 100 <= g <= 25000:
+                        weight = g / 1000
 
         price_per_kg = None
         if price and weight and weight > 0:
             price_per_kg = round(price / weight, 2)
 
         protein_per_100g = None
-        nutrition = jsonld.get("nutrition", {})
-        if isinstance(nutrition, dict):
-            protein_per_100g = parse_protein(nutrition.get("proteinContent", ""))
+        if jsonld:
+            nutrition = jsonld.get("nutrition", {})
+            if isinstance(nutrition, dict):
+                protein_per_100g = parse_protein(nutrition.get("proteinContent", ""))
 
         if not protein_per_100g:
             page_text = soup.get_text().lower()
-            protein_match = re.search(r"prot[ée]ines?\s*[:/]?\s*(\d+(?:[.,]\d+)?)\s*g", page_text)
-            if protein_match:
-                val = float(protein_match.group(1).replace(",", "."))
-                if 0 < val <= 100:
-                    protein_per_100g = val
+            patterns = [
+                r"prot[ée]ines?\s*[:/]?\s*(\d+(?:[.,]\d+)?)\s*g",
+                r"(\d+(?:[.,]\d+)?)\s*g\s*(?:de\s+)?prot[ée]ines?",
+                r"protein\s*[:/]?\s*(\d+(?:[.,]\d+)?)\s*g",
+            ]
+            for pattern in patterns:
+                match = re.search(pattern, page_text)
+                if match:
+                    val = float(match.group(1).replace(",", "."))
+                    if 10 < val <= 100:
+                        protein_per_100g = val
+                        break
 
         price_score = calculate_price_score(price_per_kg)
         nutrition_score = calculate_nutrition_score(protein_per_100g)

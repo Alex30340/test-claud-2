@@ -8,7 +8,7 @@ from scoring import calculate_price_score, calculate_nutrition_score
 
 
 def main():
-    api_key = os.environ.get("BRAVE_SEARCH_API_KEY", "")
+    api_key = os.environ.get("BRAVE_API_KEY", "") or os.environ.get("BRAVE_SEARCH_API_KEY", "")
 
     if not api_key:
         print("Erreur : la variable d'environnement BRAVE_SEARCH_API_KEY n'est pas définie.")
