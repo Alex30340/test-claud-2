@@ -5,7 +5,7 @@ run = ["streamlit", "run", "app.py", "--server.port", "5000"]
 
 [nix]
 channel = "stable-25_05"
-packages = ["glibcLocales", "xcodebuild", "zlib"]
+packages = ["cargo", "glibcLocales", "libiconv", "rustc", "xcodebuild", "zlib"]
 
 [workflows]
 runButton = "Project"
