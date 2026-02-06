@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 
 from scraper import scrape_products, extract_product_data, BraveAPIError, SEARCH_QUERIES
-from scoring import calculate_price_score, calculate_nutrition_score
+from scoring import calculate_price_score, calculate_nutrition_score, calculate_health_score
 from db import (
     init_db, create_user, get_user_by_email,
     check_and_reset_monthly_usage, increment_scan_count, get_scan_limit,
@@ -52,17 +52,37 @@ def score_label(score):
     return f"{score:.0f}/100"
 
 
+def bool_icon(val):
+    if val is True:
+        return "✅"
+    if val is False:
+        return "❌"
+    return "❓"
+
+
+def whey_type_label(wtype):
+    labels = {
+        "native": "🏆 Native",
+        "isolate": "⭐ Isolate",
+        "hydrolysate": "🔬 Hydrolysate",
+        "concentrate": "📦 Concentrate",
+        "unknown": "❓ Inconnu",
+    }
+    return labels.get((wtype or "unknown").lower(), "❓ Inconnu")
+
+
 def render_product_card(rank, row):
     s_global = row.get("score_global")
     s_prix = row.get("score_prix")
     s_nutri = row.get("score_nutrition")
+    s_sante = row.get("score_sante")
     color = score_color(s_global)
 
     nom = row.get("nom", "Produit inconnu") or "Produit inconnu"
     if len(nom) > 80:
         nom = nom[:77] + "..."
 
-    col_rank, col_info, col_scores = st.columns([0.8, 4, 3])
+    col_rank, col_info, col_scores = st.columns([0.8, 4, 4])
 
     with col_rank:
         st.markdown(
@@ -96,33 +116,71 @@ def render_product_card(rank, row):
 
         st.markdown(" | ".join(details))
 
+        type_whey = row.get("type_whey", "unknown")
+        made_fr = row.get("made_in_france", False)
+        has_sucr = row.get("has_sucralose", False)
+        has_ace = row.get("has_acesulfame_k", False)
+        has_asp = row.get("has_aspartame", False)
+        has_amino = row.get("has_aminogram", False)
+        has_bcaa = row.get("mentions_bcaa", False)
+
+        health_details = []
+        health_details.append(f"Type: {whey_type_label(type_whey)}")
+        health_details.append(f"🇫🇷 France: {bool_icon(made_fr)}")
+        if has_amino:
+            health_details.append(f"Aminogramme: {bool_icon(has_amino)}")
+        elif has_bcaa:
+            health_details.append(f"BCAA: {bool_icon(has_bcaa)}")
+
+        sweetener_parts = []
+        if has_sucr:
+            sweetener_parts.append("Sucralose")
+        if has_ace:
+            sweetener_parts.append("Acesulfame-K")
+        if has_asp:
+            sweetener_parts.append("Aspartame")
+        if sweetener_parts:
+            health_details.append(f"⚠️ Edulcorants: {', '.join(sweetener_parts)}")
+        else:
+            health_details.append("✅ Sans edulcorant detecte")
+
+        st.markdown(" | ".join(health_details))
+
         url = row.get("url", "")
         if url:
             st.markdown(f"[Voir le produit]({url})")
 
     with col_scores:
-        sc1, sc2, sc3 = st.columns(3)
+        sc1, sc2, sc3, sc4 = st.columns(4)
         with sc1:
             st.markdown(
                 f"<div style='text-align:center;'>"
-                f"<div style='font-size:0.8em;color:#666;'>Prix</div>"
-                f"<div style='font-size:1.4em;font-weight:bold;color:{score_color(s_prix)};'>{score_label(s_prix)}</div>"
+                f"<div style='font-size:0.75em;color:#666;'>Sante</div>"
+                f"<div style='font-size:1.3em;font-weight:bold;color:{score_color(s_sante)};'>{score_label(s_sante)}</div>"
                 f"</div>",
                 unsafe_allow_html=True,
             )
         with sc2:
             st.markdown(
                 f"<div style='text-align:center;'>"
-                f"<div style='font-size:0.8em;color:#666;'>Nutrition</div>"
-                f"<div style='font-size:1.4em;font-weight:bold;color:{score_color(s_nutri)};'>{score_label(s_nutri)}</div>"
+                f"<div style='font-size:0.75em;color:#666;'>Prix</div>"
+                f"<div style='font-size:1.3em;font-weight:bold;color:{score_color(s_prix)};'>{score_label(s_prix)}</div>"
                 f"</div>",
                 unsafe_allow_html=True,
             )
         with sc3:
             st.markdown(
                 f"<div style='text-align:center;'>"
-                f"<div style='font-size:0.8em;color:#666;'>Global</div>"
-                f"<div style='font-size:1.8em;font-weight:bold;color:{color};'>{score_label(s_global)}</div>"
+                f"<div style='font-size:0.75em;color:#666;'>Nutrition</div>"
+                f"<div style='font-size:1.3em;font-weight:bold;color:{score_color(s_nutri)};'>{score_label(s_nutri)}</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+        with sc4:
+            st.markdown(
+                f"<div style='text-align:center;'>"
+                f"<div style='font-size:0.75em;color:#666;'>Global</div>"
+                f"<div style='font-size:1.6em;font-weight:bold;color:{color};'>{score_label(s_global)}</div>"
                 f"</div>",
                 unsafe_allow_html=True,
             )
@@ -149,14 +207,26 @@ def render_results(products_data, is_dataframe=True):
 
     st.subheader(f"Resultats : {len(df)} produits analyses")
 
-    col_s1, col_s2, col_s3 = st.columns(3)
+    col_s1, col_s2, col_s3, col_s4 = st.columns(4)
     with col_s1:
         st.metric("Produits trouves", len(df))
     with col_s2:
         with_score = df["score_global"].dropna().shape[0]
         st.metric("Avec score complet", f"{with_score}/{len(df)}")
     with col_s3:
-        st.metric("Donnees partielles", len(df) - with_score)
+        if "made_in_france" in df.columns:
+            fr_count = df["made_in_france"].sum() if df["made_in_france"].dtype == bool else 0
+            st.metric("Fabrication France", int(fr_count))
+        else:
+            st.metric("Donnees partielles", len(df) - with_score)
+    with col_s4:
+        if "has_sucralose" in df.columns:
+            no_sweet = (~df.get("has_sucralose", pd.Series([False])).fillna(False).astype(bool) &
+                        ~df.get("has_acesulfame_k", pd.Series([False])).fillna(False).astype(bool) &
+                        ~df.get("has_aspartame", pd.Series([False])).fillna(False).astype(bool)).sum()
+            st.metric("Sans edulcorant", int(no_sweet))
+        else:
+            st.metric("Donnees partielles", len(df) - with_score)
 
     st.divider()
     st.subheader("Classement par produit")
@@ -168,8 +238,10 @@ def render_results(products_data, is_dataframe=True):
 
     display_cols = [
         "nom", "marque", "prix", "devise", "poids_kg",
-        "prix_par_kg", "proteines_100g", "score_prix",
-        "score_nutrition", "score_global", "disponibilite",
+        "prix_par_kg", "proteines_100g", "type_whey",
+        "made_in_france", "has_sucralose", "has_acesulfame_k", "has_aspartame",
+        "score_prix", "score_nutrition", "score_sante", "score_global",
+        "disponibilite",
     ]
     existing_cols = [c for c in display_cols if c in df.columns]
 
@@ -181,8 +253,14 @@ def render_results(products_data, is_dataframe=True):
         "poids_kg": st.column_config.NumberColumn("Poids (kg)", format="%.2f"),
         "prix_par_kg": st.column_config.NumberColumn("Prix/kg", format="%.2f"),
         "proteines_100g": st.column_config.NumberColumn("Prot/100g", format="%.1f"),
+        "type_whey": st.column_config.TextColumn("Type Whey"),
+        "made_in_france": st.column_config.CheckboxColumn("France"),
+        "has_sucralose": st.column_config.CheckboxColumn("Sucralose"),
+        "has_acesulfame_k": st.column_config.CheckboxColumn("Acesulf-K"),
+        "has_aspartame": st.column_config.CheckboxColumn("Aspartame"),
         "score_prix": st.column_config.ProgressColumn("Score Prix", min_value=0, max_value=100),
         "score_nutrition": st.column_config.ProgressColumn("Score Nutrition", min_value=0, max_value=100),
+        "score_sante": st.column_config.ProgressColumn("Score Sante", min_value=0, max_value=100),
         "score_global": st.column_config.ProgressColumn("Score Global", min_value=0, max_value=100),
         "disponibilite": st.column_config.TextColumn("Dispo"),
     }
@@ -435,16 +513,19 @@ def page_scan():
         st.divider()
         st.subheader("Bareme de scores")
         st.markdown("""
-        **Score Prix/Valeur :**
+        **Score Sante (55% du global) :**
+        - Type whey : Native +18, Isolate +14, Hydrolysate +12, Concentrate -8
+        - Fabrication France : +8 pts
+        - Aminogramme complet : +8 pts
+        - Edulcorants : Sucralose -10, Acesulfame-K -8, Aspartame -18
+
+        **Score Prix (25% du global) :**
         - 20 EUR/kg = 100 pts
         - 80 EUR/kg = 0 pts
 
-        **Score Nutrition :**
+        **Score Nutrition (20% du global) :**
         - 90g prot/100g = 100 pts
         - 60g prot/100g = 0 pts
-
-        **Score Global :**
-        50% prix + 50% nutrition
         """)
 
         st.divider()

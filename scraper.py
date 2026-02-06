@@ -9,7 +9,12 @@ from urllib.parse import urlparse
 import httpx
 from bs4 import BeautifulSoup
 
-from scoring import calculate_price_score, calculate_nutrition_score, calculate_global_score
+from scoring import (
+    calculate_price_score,
+    calculate_nutrition_score,
+    calculate_health_score,
+    calculate_global_score,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +26,7 @@ SEARCH_QUERIES = [
     "whey protein 1kg prix EUR achat",
     "whey isolate prix fiche produit",
     "whey hydrolysate achat en ligne",
+    "whey native francaise prix",
     "impact whey protein myprotein prix",
     "clear whey isolate prix achat",
     "optimum nutrition gold standard whey prix",
@@ -28,6 +34,8 @@ SEARCH_QUERIES = [
     "scitec nutrition whey protein prix",
     "eric favre whey protein prix",
     "foodspring whey protein prix",
+    "whey isolate sans sucralose prix",
+    "whey proteine fabrication francaise",
 ]
 
 EXCLUDED_DOMAINS = [
@@ -45,6 +53,28 @@ EXCLUDED_PATH_KEYWORDS = [
 REQUEST_DELAY = 0.3
 HTTP_TIMEOUT = 8.0
 MAX_WORKERS = 8
+
+SWEETENERS = {
+    "sucralose": ["sucralose", "splenda"],
+    "acesulfame_k": ["acesulfame", "acésulfame", "acesulfame-k", "e950"],
+    "aspartame": ["aspartame", "e951"],
+}
+
+WHEY_TYPES = {
+    "hydrolysate": ["hydrolys", "hydrolyzed", "hydrolysee", "hydrolysée", "hydrolysat"],
+    "isolate": ["isolate", "isolat"],
+    "native": ["native", "whey native"],
+    "concentrate": ["concentrate", "concentre", "concentré"],
+}
+
+ORIGIN_FR_PATTERNS = [
+    r"fabriqu[ée]e?\s+en\s+france",
+    r"made\s+in\s+france",
+    r"origine\s+france",
+    r"lait\s+d['']\s*origine\s+fran[cç]aise?",
+    r"lait\s+fran[cç]ais",
+    r"produit\s+en\s+france",
+]
 
 
 def is_product_url(url: str) -> bool:
@@ -205,6 +235,52 @@ def extract_microdata(soup: BeautifulSoup) -> dict:
     return data
 
 
+def find_ingredients_block(text: str) -> str | None:
+    if not text:
+        return None
+    t = " ".join(text.split())
+    m = re.search(r"(ingr[ée]dients?\s*[:\-]\s*)(.{40,800})", t, re.I)
+    if m:
+        return m.group(2)[:800]
+    return None
+
+
+def detect_sweeteners(text: str) -> dict:
+    t = (text or "").lower()
+    out = {}
+    for key, variants in SWEETENERS.items():
+        out[key] = any(v in t for v in variants)
+    return out
+
+
+def detect_whey_type(text: str) -> str:
+    t = (text or "").lower()
+    for wtype, variants in WHEY_TYPES.items():
+        if any(v in t for v in variants):
+            return wtype
+    return "unknown"
+
+
+def detect_made_in_france(text: str) -> bool:
+    t = (text or "").lower()
+    return any(re.search(p, t, re.I) for p in ORIGIN_FR_PATTERNS)
+
+
+def detect_aminogram(text: str) -> bool:
+    t = (text or "").lower()
+    return (
+        "aminogram" in t
+        or "profil en acides amin" in t
+        or "profil d'acides amin" in t
+        or ("leucine" in t and "isoleucine" in t and "valine" in t)
+    )
+
+
+def detect_bcaa(text: str) -> bool:
+    t = (text or "").lower()
+    return "bcaa" in t or "2:1:1" in t
+
+
 def extract_product_data(url: str) -> dict | None:
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -328,9 +404,29 @@ def extract_product_data(url: str) -> dict | None:
                         protein_per_100g = val
                         break
 
+        page_full_text = soup.get_text(" ", strip=True)
+        ingredients_text = find_ingredients_block(page_full_text)
+        analysis_text = ingredients_text or page_full_text
+
+        sweeteners = detect_sweeteners(analysis_text)
+        whey_type = detect_whey_type(name + " " + (all_text or "") + " " + (analysis_text or ""))
+        made_in_france = detect_made_in_france(page_full_text)
+        has_aminogram = detect_aminogram(page_full_text)
+        mentions_bcaa = detect_bcaa(page_full_text)
+
         price_score = calculate_price_score(price_per_kg)
         nutrition_score = calculate_nutrition_score(protein_per_100g)
-        global_score = calculate_global_score(price_per_kg, protein_per_100g)
+        health_score = calculate_health_score(
+            protein_per_100g=protein_per_100g,
+            whey_type=whey_type,
+            made_in_france=made_in_france,
+            has_sucralose=sweeteners.get("sucralose", False),
+            has_acesulfame_k=sweeteners.get("acesulfame_k", False),
+            has_aspartame=sweeteners.get("aspartame", False),
+            has_aminogram=has_aminogram,
+            mentions_bcaa=mentions_bcaa,
+        )
+        global_score = calculate_global_score(price_per_kg, protein_per_100g, health_score)
 
         return {
             "nom": name,
@@ -342,8 +438,16 @@ def extract_product_data(url: str) -> dict | None:
             "poids_kg": weight,
             "prix_par_kg": price_per_kg,
             "proteines_100g": protein_per_100g,
+            "type_whey": whey_type,
+            "made_in_france": made_in_france,
+            "has_sucralose": sweeteners.get("sucralose", False),
+            "has_acesulfame_k": sweeteners.get("acesulfame_k", False),
+            "has_aspartame": sweeteners.get("aspartame", False),
+            "has_aminogram": has_aminogram,
+            "mentions_bcaa": mentions_bcaa,
             "score_prix": price_score,
             "score_nutrition": nutrition_score,
+            "score_sante": health_score,
             "score_global": global_score,
             "date_recuperation": datetime.now().strftime("%Y-%m-%d %H:%M"),
         }
@@ -368,7 +472,7 @@ def scrape_products(api_key: str, progress_callback=None, status_callback=None) 
     urls = search_all_queries(api_key, progress_callback)
 
     if status_callback:
-        status_callback(f"{len(urls)} URLs de produits trouvées. Extraction en parallèle...")
+        status_callback(f"{len(urls)} URLs de produits trouvees. Extraction en parallele...")
 
     products = []
     completed = 0

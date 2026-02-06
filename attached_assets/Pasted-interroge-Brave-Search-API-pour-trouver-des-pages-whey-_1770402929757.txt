@@ -1,0 +1,491 @@
+interroge Brave Search API pour trouver des pages “whey” (France)
+
+scrape les pages (prix/kg, protéines/100g quand possible, ingrédients, mentions “Made in France”, type isolate/concentrate, aminogramme, sucralose etc.)
+
+calcule price_score, nutrition_score, health_score, global_score
+
+stocke en SQLite (cache) + export JSON
+
+expose une API FastAPI (/scan, /products, /products/top)
+
+Tu n’as qu’à créer ces fichiers dans Replit + mettre ta clé Brave dans les secrets.
+
+1) requirements.txt
+fastapi
+uvicorn
+requests
+beautifulsoup4
+lxml
+python-dotenv
+pydantic
+
+2) .env.example (à copier en Secrets Replit)
+BRAVE_API_KEY=xxxxxxxxxxxxxxxx
+DB_PATH=products.db
+USER_AGENT=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36
+
+
+Dans Replit → Secrets :
+
+key: BRAVE_API_KEY value: ta clé
+
+optionnel: DB_PATH, USER_AGENT
+
+3) brave_search.py
+import requests
+from urllib.parse import urlencode
+
+BRAVE_ENDPOINT = "https://api.search.brave.com/res/v1/web/search"
+
+def brave_web_search(query: str, api_key: str, count: int = 10, country: str = "fr", safesearch: str = "moderate"):
+    """
+    Brave Search API - Web Search
+    Docs: https://api-dashboard.search.brave.com/
+    """
+    headers = {
+        "Accept": "application/json",
+        "X-Subscription-Token": api_key,
+    }
+    params = {
+        "q": query,
+        "count": count,
+        "country": country,
+        "safesearch": safesearch,
+    }
+    url = f"{BRAVE_ENDPOINT}?{urlencode(params)}"
+    r = requests.get(url, headers=headers, timeout=20)
+    r.raise_for_status()
+    data = r.json()
+
+    urls = []
+    web = (data.get("web") or {}).get("results") or []
+    for item in web:
+        u = item.get("url")
+        if u:
+            urls.append(u)
+    return urls
+
+4) scoring.py
+def clamp(x: float, lo: float = 0.0, hi: float = 100.0) -> float:
+    return max(lo, min(hi, x))
+
+def calculate_price_score(price_per_kg: float | None) -> float | None:
+    """
+    Score simple: meilleur prix -> meilleur score.
+    Ajuste ces bornes selon ton marché.
+    """
+    if price_per_kg is None or price_per_kg <= 0:
+        return None
+
+    # bornes "raisonnables" en France (à ajuster)
+    best = 18.0   # €/kg excellent
+    worst = 55.0  # €/kg cher
+
+    # score 100 si <= best, 0 si >= worst
+    if price_per_kg <= best:
+        return 100.0
+    if price_per_kg >= worst:
+        return 0.0
+
+    score = 100.0 * (worst - price_per_kg) / (worst - best)
+    return round(clamp(score), 1)
+
+def calculate_nutrition_score(protein_per_100g: float | None) -> float | None:
+    if protein_per_100g is None:
+        return None
+    # 70 => 0 ; 90 => 100 (linéaire)
+    lo, hi = 70.0, 90.0
+    if protein_per_100g <= lo:
+        return 0.0
+    if protein_per_100g >= hi:
+        return 100.0
+    score = 100.0 * (protein_per_100g - lo) / (hi - lo)
+    return round(clamp(score), 1)
+
+def calculate_health_score(
+    protein_per_100g: float | None,
+    whey_type: str | None,
+    made_in_france: bool | None,
+    has_sucralose: bool | None,
+    has_acesulfame_k: bool | None,
+    has_aspartame: bool | None,
+    has_aminogram: bool | None,
+    mentions_bcaa: bool | None,
+) -> float | None:
+    score = 50.0
+
+    wt = (whey_type or "unknown").lower()
+    if wt == "native":
+        score += 18
+    elif wt == "isolate":
+        score += 14
+    elif wt == "hydrolysate":
+        score += 12
+    elif wt == "concentrate":
+        score -= 8
+
+    if made_in_france is True:
+        score += 8
+
+    penalty = 0
+    if has_sucralose:
+        penalty += 10
+    if has_acesulfame_k:
+        penalty += 8
+    if has_aspartame:
+        penalty += 18
+    score -= min(penalty, 22)
+
+    if has_aminogram:
+        score += 8
+    elif mentions_bcaa:
+        score += 3
+
+    if protein_per_100g is not None:
+        if protein_per_100g >= 85:
+            score += 6
+        elif protein_per_100g <= 70:
+            score -= 6
+
+    return round(clamp(score), 1)
+
+def calculate_global_score(price_score: float | None, nutrition_score: float | None, health_score: float | None) -> float | None:
+    weights = {"health": 0.55, "nutrition": 0.20, "price": 0.25}
+
+    parts = []
+    if health_score is not None:
+        parts.append(("health", health_score))
+    if nutrition_score is not None:
+        parts.append(("nutrition", nutrition_score))
+    if price_score is not None:
+        parts.append(("price", price_score))
+
+    if not parts:
+        return None
+
+    total_w = sum(weights[k] for k, _ in parts)
+    val = sum((weights[k] / total_w) * s for k, s in parts)
+    return round(clamp(val), 1)
+
+5) scraper.py
+import re
+import time
+import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urlparse
+from scoring import (
+    calculate_price_score,
+    calculate_nutrition_score,
+    calculate_health_score,
+    calculate_global_score,
+)
+
+SWEETENERS = {
+    "sucralose": ["sucralose", "splenda"],
+    "acesulfame_k": ["acésulfame", "acesulfame", "acesulfame-k", "e950"],
+    "aspartame": ["aspartame", "e951"],
+}
+
+WHEY_TYPES = {
+    "hydrolysate": ["hydrolys", "hydrolyzed", "hydrolysée", "hydrolysat"],
+    "isolate": ["isolate", "isolat"],
+    "native": ["native"],
+    "concentrate": ["concentrate", "concentré"],
+}
+
+ORIGIN_FR_PATTERNS = [
+    r"fabriqu[ée]\s+en\s+france",
+    r"made\s+in\s+france",
+    r"origine\s+france",
+    r"lait\s+d['’]origine\s+france",
+]
+
+PRICE_PATTERNS = [
+    # "29,90 €"
+    r"(\d{1,3}(?:[.,]\d{1,2})?)\s*€",
+]
+
+PROTEIN_PATTERNS = [
+    # "80 g de protéines pour 100 g"
+    r"(\d{2,3}(?:[.,]\d{1,2})?)\s*g\s*(?:de\s*)?protéines?\s*(?:pour|\/)\s*100\s*g",
+    # "Protéines : 80g/100g"
+    r"protéines?\s*[:\-]\s*(\d{2,3}(?:[.,]\d{1,2})?)\s*g\s*\/\s*100\s*g",
+]
+
+WEIGHT_PATTERNS = [
+    # "1 kg", "2.5kg", "2500 g"
+    r"(\d+(?:[.,]\d+)?)\s*(kg|g)\b",
+]
+
+def _to_float(num_str: str) -> float:
+    return float(num_str.replace(",", ".").strip())
+
+def find_ingredients_block(text: str) -> str | None:
+    if not text:
+        return None
+    t = " ".join(text.split())
+    m = re.search(r"(ingr[ée]dients?\s*[:\-]\s*)(.{40,800})", t, re.I)
+    if m:
+        return m.group(2)[:800]
+    return None
+
+def detect_sweeteners(text: str) -> dict:
+    t = (text or "").lower()
+    out = {}
+    for key, variants in SWEETENERS.items():
+        out[key] = any(v in t for v in variants)
+    return out
+
+def detect_whey_type(text: str) -> str:
+    t = (text or "").lower()
+    for wtype, variants in WHEY_TYPES.items():
+        if any(v in t for v in variants):
+            return wtype
+    return "unknown"
+
+def detect_made_in_france(text: str) -> bool:
+    t = (text or "").lower()
+    return any(re.search(p, t, re.I) for p in ORIGIN_FR_PATTERNS)
+
+def detect_aminogram(text: str) -> bool:
+    t = (text or "").lower()
+    return ("aminogram" in t) or ("profil en acides amin" in t) or ("leucine" in t and "isoleucine" in t and "valine" in t)
+
+def detect_bcaa(text: str) -> bool:
+    t = (text or "").lower()
+    return ("bcaa" in t) or ("2:1:1" in t)
+
+def extract_price_eur(page_text: str) -> float | None:
+    if not page_text:
+        return None
+    # on prend le plus petit prix trouvé (souvent le bon sur page produit)
+    candidates = []
+    for pat in PRICE_PATTERNS:
+        for m in re.finditer(pat, page_text, re.I):
+            try:
+                candidates.append(_to_float(m.group(1)))
+            except:
+                pass
+    if not candidates:
+        return None
+    return min(candidates)
+
+def extract_weight_kg(page_text: str) -> float | None:
+    if not page_text:
+        return None
+    # heuristique : prend un poids plausible (0.25kg à 5kg)
+    candidates = []
+    for m in re.finditer(WEIGHT_PATTERNS[0], page_text, re.I):
+        val = _to_float(m.group(1))
+        unit = m.group(2).lower()
+        kg = val if unit == "kg" else val / 1000.0
+        if 0.20 <= kg <= 5.0:
+            candidates.append(kg)
+    if not candidates:
+        return None
+    # prend le poids le plus courant (ex: 1kg)
+    candidates.sort()
+    return candidates[0]
+
+def extract_protein_per_100g(page_text: str) -> float | None:
+    if not page_text:
+        return None
+    for pat in PROTEIN_PATTERNS:
+        m = re.search(pat, page_text, re.I)
+        if m:
+            try:
+                val = _to_float(m.group(1))
+                if 40 <= val <= 95:
+                    return val
+            except:
+                pass
+    return None
+
+def scrape_product(url: str, user_agent: str, sleep_s: float = 1.0) -> dict:
+    headers = {"User-Agent": user_agent}
+    r = requests.get(url, headers=headers, timeout=20)
+    r.raise_for_status()
+
+    soup = BeautifulSoup(r.text, "lxml")
+    title = (soup.title.get_text(" ", strip=True) if soup.title else "").strip()
+    raw_text = soup.get_text(" ", strip=True)
+    low = raw_text.lower()
+
+    ingredients = find_ingredients_block(raw_text)
+    sweet = detect_sweeteners((ingredients or raw_text))
+    whey_type = detect_whey_type(title + " " + raw_text)
+    made_fr = detect_made_in_france(raw_text)
+    has_aminogram = detect_aminogram(raw_text)
+    mentions_bcaa = detect_bcaa(raw_text)
+
+    price_eur = extract_price_eur(raw_text)
+    weight_kg = extract_weight_kg(raw_text)
+    protein_per_100g = extract_protein_per_100g(raw_text)
+
+    price_per_kg = None
+    if price_eur is not None and weight_kg is not None and weight_kg > 0:
+        price_per_kg = round(price_eur / weight_kg, 2)
+
+    price_score = calculate_price_score(price_per_kg)
+    nutrition_score = calculate_nutrition_score(protein_per_100g)
+    health_score = calculate_health_score(
+        protein_per_100g=protein_per_100g,
+        whey_type=whey_type,
+        made_in_france=made_fr,
+        has_sucralose=sweet.get("sucralose", False),
+        has_acesulfame_k=sweet.get("acesulfame_k", False),
+        has_aspartame=sweet.get("aspartame", False),
+        has_aminogram=has_aminogram,
+        mentions_bcaa=mentions_bcaa,
+    )
+    global_score = calculate_global_score(price_score, nutrition_score, health_score)
+
+    time.sleep(max(0.0, sleep_s))  # rate-limit scraping
+
+    return {
+        "url": url,
+        "domain": urlparse(url).netloc,
+        "title": title,
+        "price_eur": price_eur,
+        "weight_kg": weight_kg,
+        "price_per_kg": price_per_kg,
+        "protein_per_100g": protein_per_100g,
+        "ingredients": ingredients,
+        "whey_type": whey_type,
+        "made_in_france": made_fr,
+        "has_aminogram": has_aminogram,
+        "mentions_bcaa": mentions_bcaa,
+        "has_sucralose": sweet.get("sucralose", False),
+        "has_acesulfame_k": sweet.get("acesulfame_k", False),
+        "has_aspartame": sweet.get("aspartame", False),
+        "price_score": price_score,
+        "nutrition_score": nutrition_score,
+        "health_score": health_score,
+        "global_score": global_score,
+    }
+
+6) db.py (SQLite simple)
+import sqlite3
+import json
+from datetime import datetime
+
+def init_db(db_path: str):
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS products (
+        url TEXT PRIMARY KEY,
+        data TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """)
+    conn.commit()
+    conn.close()
+
+def upsert_product(db_path: str, product: dict):
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO products(url, data, updated_at) VALUES(?,?,?) "
+        "ON CONFLICT(url) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at",
+        (product["url"], json.dumps(product, ensure_ascii=False), datetime.utcnow().isoformat()),
+    )
+    conn.commit()
+    conn.close()
+
+def list_products(db_path: str, limit: int = 200):
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute("SELECT data FROM products ORDER BY updated_at DESC LIMIT ?", (limit,))
+    rows = cur.fetchall()
+    conn.close()
+    return [json.loads(r[0]) for r in rows]
+
+7) main.py (API FastAPI + scan Brave)
+import os
+from fastapi import FastAPI, HTTPException, Query
+from dotenv import load_dotenv
+
+from brave_search import brave_web_search
+from scraper import scrape_product
+from db import init_db, upsert_product, list_products
+
+load_dotenv()
+
+BRAVE_API_KEY = os.getenv("BRAVE_API_KEY", "").strip()
+DB_PATH = os.getenv("DB_PATH", "products.db")
+USER_AGENT = os.getenv("USER_AGENT", "Mozilla/5.0")
+
+if not BRAVE_API_KEY:
+    # on laisse l'API tourner mais /scan renverra une erreur claire
+    pass
+
+init_db(DB_PATH)
+
+app = FastAPI(title="Whey Market Analyzer", version="1.0")
+
+DEFAULT_QUERIES = [
+    'whey isolate "protéines" 1kg site:.fr',
+    'whey isolate sucralose ingrédients site:.fr',
+    'whey protéine "fabriqué en France" site:.fr',
+    'whey "aminogramme" isolate site:.fr',
+]
+
+def dedupe(urls: list[str]) -> list[str]:
+    out, seen = [], set()
+    for u in urls:
+        if u not in seen:
+            out.append(u)
+            seen.add(u)
+    return out
+
+@app.get("/")
+def root():
+    return {"ok": True, "endpoints": ["/scan", "/products", "/products/top"]}
+
+@app.post("/scan")
+def scan_market(
+    queries: list[str] | None = None,
+    brave_count: int = Query(10, ge=1, le=20),
+    scrape_limit: int = Query(15, ge=1, le=50),
+    sleep_s: float = Query(1.0, ge=0.0, le=5.0),
+):
+    if not BRAVE_API_KEY:
+        raise HTTPException(status_code=400, detail="BRAVE_API_KEY manquant. Ajoute-le dans Replit Secrets.")
+
+    qlist = queries or DEFAULT_QUERIES
+
+    urls = []
+    for q in qlist:
+        urls.extend(brave_web_search(q, api_key=BRAVE_API_KEY, count=brave_count))
+
+    urls = dedupe(urls)[:scrape_limit]
+
+    results = []
+    for url in urls:
+        try:
+            prod = scrape_product(url, user_agent=USER_AGENT, sleep_s=sleep_s)
+            # filtrage minimal : on garde si on a au moins un indice (prix/kg ou protéines)
+            if prod.get("price_per_kg") is None and prod.get("protein_per_100g") is None:
+                continue
+            upsert_product(DB_PATH, prod)
+            results.append(prod)
+        except Exception as e:
+            # on ignore les pages bloquées / anti-bot / erreurs
+            continue
+
+    results.sort(key=lambda x: (x.get("global_score") is None, -(x.get("global_score") or 0)))
+    return {"count": len(results), "items": results}
+
+@app.get("/products")
+def products(limit: int = Query(200, ge=1, le=500)):
+    items = list_products(DB_PATH, limit=limit)
+    # tri : meilleurs global_score en premier
+    items.sort(key=lambda x: (x.get("global_score") is None, -(x.get("global_score") or 0)))
+    return {"count": len(items), "items": items}
+
+@app.get("/products/top")
+def top_products(n: int = Query(10, ge=1, le=50)):
+    items = list_products(DB_PATH, limit=500)
+    items.sort(key=lambda x: (x.get("global_score") is None, -(x.get("global_score") or 0)))
+    return {"count": min(n, len(items)), "items": items[:n]}

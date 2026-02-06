@@ -43,13 +43,39 @@ def init_db():
             poids_kg FLOAT,
             prix_par_kg FLOAT,
             proteines_100g FLOAT,
+            type_whey VARCHAR(50),
+            made_in_france BOOLEAN DEFAULT FALSE,
+            has_sucralose BOOLEAN DEFAULT FALSE,
+            has_acesulfame_k BOOLEAN DEFAULT FALSE,
+            has_aspartame BOOLEAN DEFAULT FALSE,
+            has_aminogram BOOLEAN DEFAULT FALSE,
+            mentions_bcaa BOOLEAN DEFAULT FALSE,
             score_prix FLOAT,
             score_nutrition FLOAT,
+            score_sante FLOAT,
             score_global FLOAT,
             date_recuperation TIMESTAMP
         );
     """)
     conn.commit()
+
+    new_columns = [
+        ("type_whey", "VARCHAR(50)"),
+        ("made_in_france", "BOOLEAN DEFAULT FALSE"),
+        ("has_sucralose", "BOOLEAN DEFAULT FALSE"),
+        ("has_acesulfame_k", "BOOLEAN DEFAULT FALSE"),
+        ("has_aspartame", "BOOLEAN DEFAULT FALSE"),
+        ("has_aminogram", "BOOLEAN DEFAULT FALSE"),
+        ("mentions_bcaa", "BOOLEAN DEFAULT FALSE"),
+        ("score_sante", "FLOAT"),
+    ]
+    for col_name, col_type in new_columns:
+        try:
+            cur.execute(f"ALTER TABLE scan_items ADD COLUMN {col_name} {col_type}")
+            conn.commit()
+        except psycopg2.errors.DuplicateColumn:
+            conn.rollback()
+
     cur.close()
     conn.close()
 
@@ -140,8 +166,11 @@ def save_scan(user_id: int, products: list[dict]) -> int:
         cur.execute(
             """INSERT INTO scan_items
             (scan_id, nom, marque, url, prix, devise, disponibilite, poids_kg,
-             prix_par_kg, proteines_100g, score_prix, score_nutrition, score_global, date_recuperation)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+             prix_par_kg, proteines_100g, type_whey, made_in_france,
+             has_sucralose, has_acesulfame_k, has_aspartame,
+             has_aminogram, mentions_bcaa,
+             score_prix, score_nutrition, score_sante, score_global, date_recuperation)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (
                 scan_id,
                 p.get("nom"),
@@ -153,8 +182,16 @@ def save_scan(user_id: int, products: list[dict]) -> int:
                 p.get("poids_kg"),
                 p.get("prix_par_kg"),
                 p.get("proteines_100g"),
+                p.get("type_whey"),
+                p.get("made_in_france", False),
+                p.get("has_sucralose", False),
+                p.get("has_acesulfame_k", False),
+                p.get("has_aspartame", False),
+                p.get("has_aminogram", False),
+                p.get("mentions_bcaa", False),
                 p.get("score_prix"),
                 p.get("score_nutrition"),
+                p.get("score_sante"),
                 p.get("score_global"),
                 p.get("date_recuperation"),
             ),
