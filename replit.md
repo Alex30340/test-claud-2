@@ -38,9 +38,20 @@ Application SaaS Python/Streamlit pour comparer les proteines whey en France. Pe
 ### Health Detection Features
 - Detection du type de whey : Native, Isolate, Hydrolysate, Concentrate
 - Detection fabrication francaise : patterns "fabrique en France", "Made in France", "lait francais"
+- Detection origine : France (confidence 0.9), EU (confidence 0.7), Inconnu (confidence 0.3)
 - Detection edulcorants : Sucralose, Acesulfame-K (E950), Aspartame (E951)
 - Detection aminogramme : profil acides amines complet (leucine + isoleucine + valine)
 - Detection BCAA : mentions "BCAA" ou ratio "2:1:1"
+- Extraction bloc ingredients depuis page HTML
+
+### UI V2 Features
+- Cartes produit avec etoiles (★★★★☆ sur 5) au lieu de scores /100
+- Badges visuels : type whey, origine, edulcorants, aminogramme
+- Ligne "Pourquoi ce score ?" expliquant le classement
+- Resume qualite par produit (type, origine, edulcorants, aminogramme)
+- Barre de filtres : tri multi-critere, toggles (sans edulcorant, France, aminogramme), dropdown type whey, recherche texte
+- Legende/bareme repliable (accordion) au lieu de bloc statique
+- Tableau complet avec barres de progression pour les scores
 
 ### Data Extraction Strategy
 Multi-couche pour maximiser la couverture :

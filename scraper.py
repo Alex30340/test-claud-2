@@ -282,9 +282,30 @@ def detect_whey_type(text: str) -> str:
     return "unknown"
 
 
+ORIGIN_EU_PATTERNS = [
+    r"origine\s+(?:union\s+)?europ[ée]enne",
+    r"origine\s+ue\b",
+    r"fabriqu[ée]e?\s+(?:en|dans\s+l[''])\s*(?:union\s+)?europ",
+    r"made\s+in\s+(?:eu|europe)\b",
+    r"lait\s+(?:d[''])?origine\s+(?:union\s+)?europ",
+    r"produit\s+(?:en|dans\s+l[''])\s*(?:union\s+)?europ",
+]
+
+
 def detect_made_in_france(text: str) -> bool:
     t = (text or "").lower()
     return any(re.search(p, t, re.I) for p in ORIGIN_FR_PATTERNS)
+
+
+def extract_origin_label(text: str, made_in_france: bool) -> dict:
+    if made_in_france:
+        return {"origin_label": "France", "origin_confidence": 0.9}
+
+    t = (text or "").lower()
+    if any(re.search(p, t, re.I) for p in ORIGIN_EU_PATTERNS):
+        return {"origin_label": "EU", "origin_confidence": 0.7}
+
+    return {"origin_label": "Inconnu", "origin_confidence": 0.3}
 
 
 def detect_aminogram(text: str) -> bool:
@@ -602,6 +623,7 @@ def extract_product_data(url: str) -> dict | None:
         sweeteners = detect_sweeteners(analysis_text)
         whey_type = detect_whey_type(name + " " + all_text[:2000])
         made_in_france = detect_made_in_france(page_full_text)
+        origin = extract_origin_label(page_full_text, made_in_france)
         has_aminogram = detect_aminogram(page_full_text)
         mentions_bcaa = detect_bcaa(page_full_text)
 
@@ -616,6 +638,8 @@ def extract_product_data(url: str) -> dict | None:
             has_aspartame=sweeteners.get("aspartame", False),
             has_aminogram=has_aminogram,
             mentions_bcaa=mentions_bcaa,
+            origin_label=origin["origin_label"],
+            origin_confidence=origin["origin_confidence"],
         )
         global_score = calculate_global_score(price_per_kg, protein_per_100g, health_score)
 
@@ -631,11 +655,14 @@ def extract_product_data(url: str) -> dict | None:
             "proteines_100g": protein_per_100g,
             "type_whey": whey_type,
             "made_in_france": made_in_france,
+            "origin_label": origin["origin_label"],
+            "origin_confidence": origin["origin_confidence"],
             "has_sucralose": sweeteners.get("sucralose", False),
             "has_acesulfame_k": sweeteners.get("acesulfame_k", False),
             "has_aspartame": sweeteners.get("aspartame", False),
             "has_aminogram": has_aminogram,
             "mentions_bcaa": mentions_bcaa,
+            "ingredients": ingredients_text,
             "score_prix": price_score,
             "score_nutrition": nutrition_score,
             "score_sante": health_score,

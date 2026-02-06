@@ -68,6 +68,9 @@ def init_db():
         ("has_aminogram", "BOOLEAN DEFAULT FALSE"),
         ("mentions_bcaa", "BOOLEAN DEFAULT FALSE"),
         ("score_sante", "FLOAT"),
+        ("origin_label", "VARCHAR(50) DEFAULT 'Inconnu'"),
+        ("origin_confidence", "FLOAT DEFAULT 0.3"),
+        ("ingredients", "TEXT"),
     ]
     for col_name, col_type in new_columns:
         try:
@@ -167,10 +170,11 @@ def save_scan(user_id: int, products: list[dict]) -> int:
             """INSERT INTO scan_items
             (scan_id, nom, marque, url, prix, devise, disponibilite, poids_kg,
              prix_par_kg, proteines_100g, type_whey, made_in_france,
+             origin_label, origin_confidence,
              has_sucralose, has_acesulfame_k, has_aspartame,
-             has_aminogram, mentions_bcaa,
+             has_aminogram, mentions_bcaa, ingredients,
              score_prix, score_nutrition, score_sante, score_global, date_recuperation)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (
                 scan_id,
                 p.get("nom"),
@@ -184,11 +188,14 @@ def save_scan(user_id: int, products: list[dict]) -> int:
                 p.get("proteines_100g"),
                 p.get("type_whey"),
                 p.get("made_in_france", False),
+                p.get("origin_label", "Inconnu"),
+                p.get("origin_confidence", 0.3),
                 p.get("has_sucralose", False),
                 p.get("has_acesulfame_k", False),
                 p.get("has_aspartame", False),
                 p.get("has_aminogram", False),
                 p.get("mentions_bcaa", False),
+                p.get("ingredients"),
                 p.get("score_prix"),
                 p.get("score_nutrition"),
                 p.get("score_sante"),

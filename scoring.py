@@ -31,6 +31,8 @@ def calculate_health_score(
     has_aspartame: bool | None,
     has_aminogram: bool | None,
     mentions_bcaa: bool | None,
+    origin_label: str | None = None,
+    origin_confidence: float | None = None,
 ) -> float | None:
     score = 50.0
 
@@ -44,7 +46,14 @@ def calculate_health_score(
     elif wt == "concentrate":
         score -= 8
 
-    if made_in_france is True:
+    ol = (origin_label or "").strip()
+    oc = origin_confidence if origin_confidence is not None else 0.3
+
+    if ol == "France":
+        score += round(8 * oc, 1)
+    elif ol == "EU":
+        score += round(4 * oc, 1)
+    elif made_in_france is True:
         score += 8
 
     penalty = 0

@@ -1,0 +1,83 @@
+TU ES UN DEV FULLSTACK. Objectif : rendre l’interface “classement whey” beaucoup plus claire (V2) avec un affichage startup-friendly.
+
+CONTEXTE
+J’ai déjà une page qui liste des produits whey avec :
+- title, url
+- price_per_kg, price_score
+- protein_per_100g, nutrition_score
+- health_score, global_score
+- whey_type (isolate/concentrate/hydrolysate/native/unknown)
+- made_in_france (bool)
+- has_aminogram (bool)
+- has_sucralose / has_acesulfame_k / has_aspartame (bool)
+- mentions_bcaa (bool)
+- ingredients (string ou null)
+Actuellement, l’affichage est trop “data”, pas assez lisible.
+
+OBJECTIFS UI V2 (IMPORTANT)
+1) Chaque produit doit être affiché sous forme de “card” (carte produit) avec une hiérarchie visuelle claire :
+   - Rang (#1, #2, ...)
+   - Nom produit (titre)
+   - Score global en étoiles + note numérique
+   - Badges (type isolate/native, sans sucralose, aminogramme, fabrication/origine)
+   - Prix (€/kg + prix total si dispo) et protéines/100g
+   - Bouton “Voir le produit” (lien)
+   - Un “Pourquoi ce score ?” en mini-ligne (ex: “Isolate + aminogramme, sans édulcorants, fabrication FR”)
+
+2) Remplacer les scores /100 par un rendu étoiles :
+   - global_score -> étoiles sur 5 (score/20)
+   - health_score -> étoiles sur 5
+   - price_score -> étoiles sur 5
+   - nutrition_score -> étoiles sur 5
+   Afficher à côté la note “4.3/5” + optionnel “86/100” en petit.
+
+3) Ajouter une section “Résumé qualité” dans la card :
+   - ✅ Type : Isolate / Native / etc.
+   - 🇫🇷 Origine : France / UE / Hors UE / ❓ Non précisé
+   - 🚫 Édulcorants : Aucun / Sucralose / Acesulfame-K / Aspartame
+   - 🧪 Aminogramme : Oui/Non
+
+4) Important : l’origine est souvent inconnue. Mettre en place un champ origin_label et origin_confidence :
+   - origin_label : "France" | "EU" | "Hors EU" | "Inconnu"
+   - origin_confidence : 0..1
+   Si made_in_france=True => origin_label="France", confidence=0.9
+   Sinon si texte contient "origine UE" => "EU" confidence=0.7
+   Sinon => "Inconnu" confidence=0.3
+   Et UI : afficher ❓ Inconnu au lieu de laisser vide.
+   Le score santé ne doit PAS trop chuter si inconnue : pas de pénalité, juste pas de bonus.
+
+5) Ajouter un bandeau “Filtres” au-dessus de la liste :
+   - Trier par : Global / Qualité / Prix / Nutrition
+   - Filtrer : Sans sucralose (toggle), Fabrication France (toggle), Avec aminogramme (toggle), Type whey (dropdown)
+   - Recherche texte (nom / marque)
+
+6) Ajouter un composant “Legend / barème” compact repliable (accordion) au lieu d’un bloc statique trop long.
+
+TECHNIQUE (selon mon projet actuel)
+- Backend: Python (FastAPI) qui sert /products (liste produits JSON)
+- Front: HTML+CSS+JS OU React (si déjà React, rester React)
+- Ne pas casser l’existant : ajouter une route /ui/v2 ou un flag V2 pour tester.
+
+CE QUE TU DOIS PRODUIRE
+A) Modifs backend:
+   - Ajouter une fonction extract_origin_label(text) qui retourne origin_label + confidence à partir de la page scrapée.
+   - Ajouter ces champs au JSON produit.
+   - Adapter le scoring santé: bonus +8 si France, sinon 0. PAS de pénalité si inconnu.
+
+B) Modifs frontend:
+   - Nouveau composant / page : “WheyRankingV2”
+   - Cards produits avec étoiles, badges, résumé qualité, CTA “Voir le produit”
+   - Filtres + tri + search
+   - Responsive mobile
+
+C) Livrable:
+   - Donne-moi les fichiers complets à créer/modifier (chemins inclus)
+   - Code complet, prêt à exécuter sur Replit
+   - Aucun pseudo-code, uniquement du vrai code
+
+CONTRAINTES UX
+- Texte clair, lisible, pas surchargé
+- Afficher les éléments manquants (N/A) proprement (ex: “Protéines : non trouvé”)
+- Mettre en avant le “Global” puis expliquer les 3 sous-scores avec étoiles
+
+COMMENCE PAR ME PROPOSER UNE STRUCTURE DE FICHIERS ET ENSUITE DONNE LES FICHIERS COMPLETS.
