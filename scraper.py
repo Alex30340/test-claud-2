@@ -62,7 +62,7 @@ def search_brave(api_key: str, query: str, count: int = 10) -> list[str]:
     params = {
         "q": query,
         "count": count,
-        "country": "fr",
+        "country": "FR",
         "search_lang": "fr",
     }
 
