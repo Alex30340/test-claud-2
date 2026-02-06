@@ -3,17 +3,17 @@ import pandas as pd
 import os
 from datetime import datetime
 
-from scraper import scrape_products, SEARCH_QUERIES
+from scraper import scrape_products, extract_product_data, BraveAPIError, SEARCH_QUERIES
 from scoring import calculate_price_score, calculate_nutrition_score
 
 st.set_page_config(
-    page_title="Comparateur Protéines Whey",
+    page_title="Comparateur Proteines Whey",
     page_icon="💪",
     layout="wide",
 )
 
-st.title("Comparateur de Protéines en Poudre")
-st.markdown("Analyse automatique du marché des protéines whey en France")
+st.title("Comparateur de Proteines en Poudre")
+st.markdown("Analyse automatique du marche des proteines whey en France")
 
 api_key = os.environ.get("BRAVE_SEARCH_API_KEY", "")
 
@@ -22,22 +22,22 @@ with st.sidebar:
 
     if not api_key:
         api_key_input = st.text_input(
-            "Clé API Brave Search",
+            "Cle API Brave Search",
             type="password",
-            help="Obtenez une clé gratuite sur https://brave.com/search/api/",
+            help="Obtenez une cle gratuite sur https://brave.com/search/api/",
         )
         if api_key_input:
             api_key = api_key_input
     else:
-        st.success("Clé API configurée")
+        st.success("Cle API configuree")
 
     st.divider()
-    st.subheader("Mots-clés de recherche")
+    st.subheader("Mots-cles de recherche")
     for q in SEARCH_QUERIES:
         st.markdown(f"- {q}")
 
     st.divider()
-    st.subheader("Barème de scores")
+    st.subheader("Bareme de scores")
     st.markdown("""
     **Score Prix/Valeur :**
     - 20 EUR/kg = 100 pts
@@ -56,57 +56,123 @@ if "products_df" not in st.session_state:
 if "scan_done" not in st.session_state:
     st.session_state.scan_done = False
 
-col1, col2 = st.columns([1, 3])
+tab_auto, tab_manual = st.tabs(["Scan automatique", "Analyse manuelle d'URLs"])
 
-with col1:
+with tab_auto:
     scan_button = st.button(
         "Lancer le scan",
         type="primary",
         disabled=not api_key,
-        use_container_width=True,
+        use_container_width=False,
     )
 
-if not api_key:
-    st.warning("Veuillez configurer votre clé API Brave Search dans la barre latérale pour commencer.")
-    st.markdown("""
-    ### Comment obtenir une clé API Brave Search ?
-    1. Rendez-vous sur [brave.com/search/api](https://brave.com/search/api/)
-    2. Créez un compte gratuit
-    3. Copiez votre clé API
-    4. Collez-la dans le champ ci-dessus ou ajoutez-la comme secret `BRAVE_SEARCH_API_KEY`
-    """)
+    if not api_key:
+        st.warning("Veuillez configurer votre cle API Brave Search pour utiliser le scan automatique.")
+        st.markdown("""
+        ### Comment obtenir une cle API Brave Search ?
+        1. Rendez-vous sur [api-dashboard.search.brave.com](https://api-dashboard.search.brave.com)
+        2. Creez un compte gratuit
+        3. Allez dans **API Keys** et creez une cle (plan Free = 2000 requetes/mois)
+        4. La cle commence par **BSA...**
+        5. Ajoutez-la comme secret `BRAVE_SEARCH_API_KEY` dans Replit
 
-if scan_button and api_key:
-    status_container = st.empty()
-    progress_bar = st.progress(0)
-    detail_text = st.empty()
+        Vous pouvez aussi utiliser l'onglet **Analyse manuelle d'URLs** pour tester l'extraction.
+        """)
 
-    def update_progress(current, total, detail=""):
-        if total > 0:
-            progress_bar.progress(current / total)
-        detail_text.text(detail)
+    if scan_button and api_key:
+        status_container = st.empty()
+        progress_bar = st.progress(0)
+        detail_text = st.empty()
 
-    def update_status(msg):
-        status_container.info(msg)
+        def update_progress(current, total, detail=""):
+            if total > 0:
+                progress_bar.progress(current / total)
+            detail_text.text(detail)
 
-    with st.spinner("Analyse en cours..."):
-        products = scrape_products(
-            api_key=api_key,
-            progress_callback=update_progress,
-            status_callback=update_status,
-        )
+        def update_status(msg):
+            status_container.info(msg)
 
-    progress_bar.empty()
-    detail_text.empty()
+        try:
+            with st.spinner("Analyse en cours..."):
+                products = scrape_products(
+                    api_key=api_key,
+                    progress_callback=update_progress,
+                    status_callback=update_status,
+                )
 
-    if products:
-        df = pd.DataFrame(products)
-        st.session_state.products_df = df
-        st.session_state.scan_done = True
-        status_container.success(f"{len(products)} produits trouvés et analysés !")
-    else:
-        status_container.warning("Aucun produit trouvé. Vérifiez votre clé API ou réessayez.")
-        st.session_state.scan_done = False
+            progress_bar.empty()
+            detail_text.empty()
+
+            if products:
+                df = pd.DataFrame(products)
+                st.session_state.products_df = df
+                st.session_state.scan_done = True
+                status_container.success(f"{len(products)} produits trouves et analyses !")
+            else:
+                status_container.warning("Aucun produit trouve. Les pages visitees ne contenaient pas de donnees produit structurees (JSON-LD).")
+                st.session_state.scan_done = False
+
+        except BraveAPIError as e:
+            progress_bar.empty()
+            detail_text.empty()
+            error_msg = str(e)
+            if "SUBSCRIPTION_TOKEN_INVALID" in error_msg:
+                status_container.error(
+                    "La cle API Brave Search est invalide. "
+                    "Verifiez que vous avez copie la bonne cle depuis "
+                    "[api-dashboard.search.brave.com/app/keys](https://api-dashboard.search.brave.com/app/keys). "
+                    "La cle doit commencer par 'BSA...'."
+                )
+            else:
+                status_container.error(f"Erreur API Brave Search : {error_msg}")
+
+with tab_manual:
+    st.markdown("Entrez des URLs de pages produit (une par ligne) pour extraire les donnees :")
+    urls_input = st.text_area(
+        "URLs de pages produit",
+        placeholder="https://www.myprotein.fr/sports-nutrition/impact-whey-protein/10530943.html\nhttps://www.bulk.com/fr/whey-protein.html",
+        height=150,
+    )
+
+    analyze_button = st.button(
+        "Analyser ces URLs",
+        type="primary",
+        key="manual_analyze",
+    )
+
+    if analyze_button and urls_input.strip():
+        urls = [u.strip() for u in urls_input.strip().split("\n") if u.strip().startswith("http")]
+
+        if not urls:
+            st.warning("Aucune URL valide trouvee. Les URLs doivent commencer par http:// ou https://")
+        else:
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            products = []
+
+            import time
+            for i, url in enumerate(urls):
+                status_text.text(f"Extraction {i+1}/{len(urls)} : {url[:80]}...")
+                progress_bar.progress((i + 1) / len(urls))
+                product = extract_product_data(url)
+                if product:
+                    products.append(product)
+                elif i < len(urls) - 1:
+                    time.sleep(1)
+
+            progress_bar.empty()
+            status_text.empty()
+
+            if products:
+                df = pd.DataFrame(products)
+                st.session_state.products_df = df
+                st.session_state.scan_done = True
+                st.success(f"{len(products)} produits extraits sur {len(urls)} URLs analysees !")
+            else:
+                st.warning(
+                    "Aucune donnee produit extraite. "
+                    "Les pages ne contiennent peut-etre pas de donnees structurees JSON-LD (schema.org Product)."
+                )
 
 if st.session_state.products_df is not None and st.session_state.scan_done:
     df = st.session_state.products_df
@@ -115,7 +181,7 @@ if st.session_state.products_df is not None and st.session_state.scan_done:
 
     col_m1, col_m2, col_m3, col_m4 = st.columns(4)
     with col_m1:
-        st.metric("Produits trouvés", len(df))
+        st.metric("Produits trouves", len(df))
     with col_m2:
         avg_score = df["score_global"].dropna().mean()
         st.metric("Score moyen", f"{avg_score:.1f}" if pd.notna(avg_score) else "N/A")
@@ -124,7 +190,7 @@ if st.session_state.products_df is not None and st.session_state.scan_done:
         st.metric("Prix moyen /kg", f"{avg_price:.2f} EUR" if pd.notna(avg_price) else "N/A")
     with col_m4:
         avg_prot = df["proteines_100g"].dropna().mean()
-        st.metric("Protéines moy. /100g", f"{avg_prot:.1f}g" if pd.notna(avg_prot) else "N/A")
+        st.metric("Proteines moy. /100g", f"{avg_prot:.1f}g" if pd.notna(avg_prot) else "N/A")
 
     st.divider()
     st.subheader("Classement des produits")
@@ -164,10 +230,10 @@ if st.session_state.products_df is not None and st.session_state.scan_done:
     for _, row in sorted_df.iterrows():
         score_text = f"Score: {row['score_global']:.0f}" if pd.notna(row.get("score_global")) else "Score: N/A"
         price_text = f"{row['prix']:.2f} {row.get('devise', 'EUR')}" if pd.notna(row.get("prix")) else "Prix N/A"
-        st.markdown(f"- **{row['nom'][:80]}** — {price_text} — {score_text} — [Voir le produit]({row['url']})")
+        st.markdown(f"- **{row['nom'][:80]}** -- {price_text} -- {score_text} -- [Voir le produit]({row['url']})")
 
     st.divider()
-    st.subheader("Exporter les données")
+    st.subheader("Exporter les donnees")
 
     col_e1, col_e2 = st.columns(2)
 
@@ -177,7 +243,7 @@ if st.session_state.products_df is not None and st.session_state.scan_done:
 
     with col_e1:
         st.download_button(
-            label="Télécharger CSV",
+            label="Telecharger CSV",
             data=csv_data,
             file_name=f"proteines_whey_{datetime.now().strftime('%Y%m%d')}.csv",
             mime="text/csv",
@@ -189,7 +255,7 @@ if st.session_state.products_df is not None and st.session_state.scan_done:
         df.to_excel(excel_path, index=False, sheet_name="Produits")
         with open(excel_path, "rb") as f:
             st.download_button(
-                label="Télécharger Excel",
+                label="Telecharger Excel",
                 data=f.read(),
                 file_name=f"proteines_whey_{datetime.now().strftime('%Y%m%d')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

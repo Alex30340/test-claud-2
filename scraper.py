@@ -12,6 +12,10 @@ from scoring import calculate_price_score, calculate_nutrition_score, calculate_
 
 logger = logging.getLogger(__name__)
 
+
+class BraveAPIError(Exception):
+    pass
+
 SEARCH_QUERIES = [
     "whey protein achat",
     "whey isolate prix",
@@ -69,6 +73,11 @@ def search_brave(api_key: str, query: str, count: int = 10) -> list[str]:
     try:
         with httpx.Client(timeout=HTTP_TIMEOUT) as client:
             response = client.get(url, headers=headers, params=params)
+            if response.status_code == 422:
+                error_data = response.json()
+                error_code = error_data.get("error", {}).get("code", "")
+                error_detail = error_data.get("error", {}).get("detail", "")
+                raise BraveAPIError(f"{error_code}: {error_detail}")
             response.raise_for_status()
             data = response.json()
 
@@ -79,6 +88,8 @@ def search_brave(api_key: str, query: str, count: int = 10) -> list[str]:
                 results.append(page_url)
         return results
 
+    except BraveAPIError:
+        raise
     except Exception as e:
         logger.error(f"Brave search error for '{query}': {e}")
         return []
@@ -174,7 +185,7 @@ def extract_product_data(url: str) -> dict | None:
     }
 
     try:
-        with httpx.Client(timeout=HTTP_TIMEOUT, follow_redirects=True) as client:
+        with httpx.Client(timeout=HTTP_TIMEOUT, follow_redirects=True, verify=False) as client:
             response = client.get(url, headers=headers)
             response.raise_for_status()
 
