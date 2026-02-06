@@ -2,6 +2,7 @@ import json
 import re
 import time
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -41,8 +42,9 @@ EXCLUDED_PATH_KEYWORDS = [
     "video", "news", "actualite",
 ]
 
-REQUEST_DELAY = 1.0
-HTTP_TIMEOUT = 15.0
+REQUEST_DELAY = 0.3
+HTTP_TIMEOUT = 8.0
+MAX_WORKERS = 8
 
 
 def is_product_url(url: str) -> bool:
@@ -351,6 +353,14 @@ def extract_product_data(url: str) -> dict | None:
         return None
 
 
+def _extract_with_log(url: str) -> dict | None:
+    try:
+        return extract_product_data(url)
+    except Exception as e:
+        logger.warning(f"Parallel extraction error for {url}: {e}")
+        return None
+
+
 def scrape_products(api_key: str, progress_callback=None, status_callback=None) -> list[dict]:
     if status_callback:
         status_callback("Recherche de produits sur internet...")
@@ -358,18 +368,25 @@ def scrape_products(api_key: str, progress_callback=None, status_callback=None) 
     urls = search_all_queries(api_key, progress_callback)
 
     if status_callback:
-        status_callback(f"{len(urls)} URLs de produits trouvées. Extraction des données...")
+        status_callback(f"{len(urls)} URLs de produits trouvées. Extraction en parallèle...")
 
     products = []
-    for i, url in enumerate(urls):
-        if progress_callback:
-            progress_callback(i, len(urls), f"Extraction: {urlparse(url).netloc}")
+    completed = 0
+    total = len(urls)
 
-        product = extract_product_data(url)
-        if product:
-            products.append(product)
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = {executor.submit(_extract_with_log, url): url for url in urls}
 
-        time.sleep(REQUEST_DELAY)
+        for future in as_completed(futures):
+            completed += 1
+            url = futures[future]
+
+            if progress_callback:
+                progress_callback(completed, total, f"Extraction: {urlparse(url).netloc}")
+
+            result = future.result()
+            if result:
+                products.append(result)
 
     products.sort(key=lambda p: p.get("score_global") or -1, reverse=True)
 

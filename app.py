@@ -478,7 +478,8 @@ def page_scan():
 
                 def update_progress(current, total, detail=""):
                     if total > 0:
-                        progress_bar.progress(current / total)
+                        pct = min(current / total, 1.0)
+                        progress_bar.progress(pct)
                     detail_text.text(detail)
 
                 def update_status(msg):
@@ -539,16 +540,25 @@ def page_scan():
                 else:
                     progress_bar = st.progress(0)
                     status_text = st.empty()
-                    products = []
 
-                    for i, url in enumerate(urls):
-                        status_text.text(f"Extraction {i+1}/{len(urls)} : {url[:80]}...")
-                        progress_bar.progress((i + 1) / len(urls))
-                        product = extract_product_data(url)
-                        if product:
-                            products.append(product)
-                        if i < len(urls) - 1:
-                            time.sleep(1)
+                    from concurrent.futures import ThreadPoolExecutor, as_completed
+                    products = []
+                    completed_count = 0
+                    total_count = len(urls)
+
+                    with ThreadPoolExecutor(max_workers=8) as executor:
+                        futures = {executor.submit(extract_product_data, url): url for url in urls}
+                        for future in as_completed(futures):
+                            completed_count += 1
+                            url = futures[future]
+                            status_text.text(f"Extraction {completed_count}/{total_count} : {url[:80]}...")
+                            progress_bar.progress(completed_count / total_count)
+                            try:
+                                result = future.result()
+                                if result:
+                                    products.append(result)
+                            except Exception:
+                                pass
 
                     progress_bar.empty()
                     status_text.empty()

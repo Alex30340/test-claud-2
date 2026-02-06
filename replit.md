@@ -43,6 +43,12 @@ Multi-couche pour maximiser la couverture :
 4. HTML regex fallbacks (price classes, text patterns)
 Sites exclus : Amazon (503), Decathlon (403), reseaux sociaux
 
+### Performance
+- Extraction parallele via ThreadPoolExecutor (8 workers simultanes)
+- REQUEST_DELAY = 0.3s entre requetes Brave API
+- HTTP_TIMEOUT = 8s par site
+- Le scan automatique et l'analyse manuelle utilisent tous deux l'extraction parallele
+
 ### Running
 - Streamlit UI: `streamlit run app.py --server.port 5000`
 - CLI: `python main.py`
