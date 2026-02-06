@@ -302,10 +302,17 @@ def render_product_card_v2(rank, row):
     s_proteique = row.get("score_proteique")
     s_sante = row.get("score_sante")
 
-    nom = html_module.escape(str(row.get("nom", "Produit inconnu") or "Produit inconnu"))
+    import re as _re
+    raw_nom = str(row.get("nom", "Produit inconnu") or "Produit inconnu")
+    raw_nom = _re.sub(r'<[^>]+>', '', raw_nom).strip()
+    raw_nom = html_module.unescape(raw_nom)
+    nom = html_module.escape(raw_nom)
     if len(nom) > 100:
         nom = nom[:97] + "..."
-    marque = html_module.escape(str(row.get("marque", "") or ""))
+    raw_marque = str(row.get("marque", "") or "")
+    raw_marque = _re.sub(r'<[^>]+>', '', raw_marque).strip()
+    raw_marque = html_module.unescape(raw_marque)
+    marque = html_module.escape(raw_marque)
     url = row.get("url", "")
 
     prix = row.get("prix")
