@@ -447,7 +447,7 @@ def render_product_card_v2(rank, row):
       </div>
     </div>
     """
-    st.markdown(card_html, unsafe_allow_html=True)
+    st.html(CARD_CSS + card_html)
 
 
 def render_results(products_data, is_dataframe=True):
