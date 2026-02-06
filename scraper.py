@@ -43,6 +43,7 @@ EXCLUDED_DOMAINS = [
     "tiktok.com", "reddit.com", "forum", "blog", "wikipedia.org",
     "pinterest.com", "linkedin.com", "quora.com",
     "amazon.fr", "amazon.com",
+    "idealo.fr", "idealo.com",
 ]
 
 EXCLUDED_PATH_KEYWORDS = [
@@ -50,8 +51,8 @@ EXCLUDED_PATH_KEYWORDS = [
     "video", "news", "actualite",
 ]
 
-REQUEST_DELAY = 0.3
-HTTP_TIMEOUT = 8.0
+REQUEST_DELAY = 1.1
+HTTP_TIMEOUT = 12.0
 MAX_WORKERS = 8
 
 SWEETENERS = {
@@ -74,6 +75,15 @@ ORIGIN_FR_PATTERNS = [
     r"lait\s+d['']\s*origine\s+fran[cç]aise?",
     r"lait\s+fran[cç]ais",
     r"produit\s+en\s+france",
+]
+
+KNOWN_BRANDS = [
+    "myprotein", "optimum nutrition", "bulk", "bulk powders", "scitec nutrition",
+    "eric favre", "foodspring", "nutrimuscle", "eafit", "apurna", "biotech usa",
+    "dymatize", "bsn", "muscletech", "nutri&co", "protealpes", "alter nutrition",
+    "pure whey", "qnt", "olimp", "nu3", "prozis", "impact nutrition",
+    "the protein works", "warriors", "iron factory", "harder", "gold standard",
+    "iso whey", "native whey", "whey zero",
 ]
 
 
@@ -115,6 +125,10 @@ def search_brave(api_key: str, query: str, count: int = 15) -> list[str]:
                 error_code = error_data.get("error", {}).get("code", "")
                 error_detail = error_data.get("error", {}).get("detail", "")
                 raise BraveAPIError(f"{error_code}: {error_detail}")
+            if response.status_code == 429:
+                logger.warning(f"Rate limited on query: {query}, waiting 5s...")
+                time.sleep(5)
+                response = client.get(url, headers=headers, params=params)
             response.raise_for_status()
             data = response.json()
 
@@ -180,12 +194,14 @@ def parse_weight(text: str) -> float | None:
 
     match = re.search(r"(\d+(?:\.\d+)?)\s*kg", text)
     if match:
-        return float(match.group(1))
+        val = float(match.group(1))
+        if 0.1 <= val <= 25:
+            return val
 
-    match = re.search(r"(\d+(?:\.\d+)?)\s*g(?:r|ramme)?", text)
+    match = re.search(r"(\d+(?:\.\d+)?)\s*g(?:r|ramme)?(?:\b|[^a-z])", text)
     if match:
         grams = float(match.group(1))
-        if grams >= 100:
+        if 100 <= grams <= 25000:
             return grams / 1000
 
     return None
@@ -195,11 +211,16 @@ def parse_price(value) -> float | None:
     if value is None:
         return None
     if isinstance(value, (int, float)):
-        return float(value)
-    text = str(value).replace(",", ".").strip()
+        v = float(value)
+        if 0 < v < 1000:
+            return v
+        return None
+    text = str(value).replace(",", ".").replace("\u00a0", "").replace(" ", "").strip()
     match = re.search(r"(\d+(?:\.\d+)?)", text)
     if match:
-        return float(match.group(1))
+        v = float(match.group(1))
+        if 0 < v < 1000:
+            return v
     return None
 
 
@@ -210,7 +231,7 @@ def parse_protein(text: str) -> float | None:
     match = re.search(r"(\d+(?:\.\d+)?)\s*g?", text)
     if match:
         val = float(match.group(1))
-        if 0 < val <= 100:
+        if 10 < val <= 100:
             return val
     return None
 
@@ -281,6 +302,203 @@ def detect_bcaa(text: str) -> bool:
     return "bcaa" in t or "2:1:1" in t
 
 
+def extract_brand_from_text(name: str, url: str) -> str:
+    combined = (name + " " + url).lower()
+    for brand in KNOWN_BRANDS:
+        if brand in combined:
+            return brand.title()
+
+    domain = urlparse(url).netloc.lower().replace("www.", "")
+    parts = domain.split(".")
+    if parts and parts[0] not in ("shop", "store", "boutique", "pro"):
+        return parts[0].title()
+    return ""
+
+
+def extract_nutrition_from_table(soup: BeautifulSoup) -> dict:
+    result = {"protein": None, "calories": None, "fat": None, "carbs": None, "sugar": None, "fiber": None, "salt": None}
+
+    page_text = soup.get_text(" ", strip=True).lower()
+
+    protein_patterns = [
+        r"prot[ée]ines?\s*(?:par\s+100\s*g)?\s*[:\|]?\s*(\d+(?:[.,]\d+)?)\s*g",
+        r"(\d+(?:[.,]\d+)?)\s*g\s*(?:de\s+)?prot[ée]ines?\s*(?:par|pour|/)\s*100\s*g",
+        r"prot[ée]ines?\s*[:\|]?\s*(\d+(?:[.,]\d+)?)\s*(?:g|%)",
+        r"protein\s*[:\|]?\s*(\d+(?:[.,]\d+)?)\s*g",
+        r"(\d+(?:[.,]\d+)?)\s*g\s*(?:de\s+)?prot[ée]ines?",
+        r"(\d+(?:[.,]\d+)?)\s*%\s*(?:de\s+)?prot[ée]ines?",
+        r"teneur\s+en\s+prot[ée]ines?\s*[:\|]?\s*(\d+(?:[.,]\d+)?)\s*(?:g|%)",
+        r"pour\s+100\s*g.*?prot[ée]ines?\s*[:\|]?\s*(\d+(?:[.,]\d+)?)",
+        r"prot[ée]ines?\s*\(?\s*pour\s+100\s*g\s*\)?\s*[:\|]?\s*(\d+(?:[.,]\d+)?)",
+    ]
+
+    for pattern in protein_patterns:
+        match = re.search(pattern, page_text)
+        if match:
+            val = float(match.group(1).replace(",", "."))
+            if 10 < val <= 100:
+                result["protein"] = val
+                break
+
+    if not result["protein"]:
+        tables = soup.find_all("table")
+        for table in tables:
+            table_text = table.get_text(" ", strip=True).lower()
+            if "prot" in table_text or "nutritio" in table_text or "valeur" in table_text:
+                rows = table.find_all("tr")
+                for row in rows:
+                    cells = row.find_all(["td", "th"])
+                    if len(cells) >= 2:
+                        label = cells[0].get_text(strip=True).lower()
+                        if "prot" in label:
+                            val_text = cells[1].get_text(strip=True)
+                            v = parse_protein(val_text)
+                            if v:
+                                result["protein"] = v
+                                break
+                        if len(cells) >= 3 and "prot" in label:
+                            val_text = cells[1].get_text(strip=True)
+                            v = parse_protein(val_text)
+                            if not v:
+                                val_text = cells[2].get_text(strip=True)
+                                v = parse_protein(val_text)
+                            if v:
+                                result["protein"] = v
+                                break
+
+    if not result["protein"]:
+        dl_tags = soup.find_all("dl")
+        for dl in dl_tags:
+            dts = dl.find_all("dt")
+            dds = dl.find_all("dd")
+            for dt, dd in zip(dts, dds):
+                if "prot" in dt.get_text(strip=True).lower():
+                    v = parse_protein(dd.get_text(strip=True))
+                    if v:
+                        result["protein"] = v
+                        break
+
+    if not result["protein"]:
+        divs = soup.find_all(["div", "span", "li", "p"], class_=re.compile(r"nutri|protein|valeur|info", re.I))
+        for div in divs:
+            text = div.get_text(" ", strip=True).lower()
+            if "prot" in text:
+                match = re.search(r"(\d+(?:[.,]\d+)?)\s*g", text)
+                if match:
+                    v = float(match.group(1).replace(",", "."))
+                    if 10 < v <= 100:
+                        result["protein"] = v
+                        break
+
+    if not result["protein"]:
+        section_match = re.search(
+            r"(?:valeurs?\s+nutritionn|informations?\s+nutritionn|nutrition|pour\s+100\s*g).*?prot[ée]ines?\s*[:\s]*(\d+(?:[.,]\d+)?)\s*g",
+            page_text,
+        )
+        if section_match:
+            v = float(section_match.group(1).replace(",", "."))
+            if 10 < v <= 100:
+                result["protein"] = v
+
+    if not result["protein"]:
+        section_match = re.search(
+            r"par\s+(?:dose|portion|serving|scoop).*?prot[ée]ines?\s*[:\s]*(\d+(?:[.,]\d+)?)\s*g",
+            page_text,
+        )
+        if section_match:
+            v = float(section_match.group(1).replace(",", "."))
+            if 5 < v <= 60:
+                dose_size_match = re.search(r"(?:dose|portion|serving|scoop)\s*(?:de)?\s*(\d+)\s*g", page_text)
+                if dose_size_match:
+                    dose_g = float(dose_size_match.group(1))
+                    if 20 <= dose_g <= 50:
+                        per_100 = round((v / dose_g) * 100, 1)
+                        if 10 < per_100 <= 100:
+                            result["protein"] = per_100
+
+    return result
+
+
+def extract_weight_comprehensive(soup: BeautifulSoup, name: str, jsonld: dict | None) -> float | None:
+    combined_text = name.lower().replace(",", ".")
+
+    if jsonld:
+        desc = jsonld.get("description", "")
+        if isinstance(desc, str):
+            combined_text += " " + desc.lower().replace(",", ".")
+
+    weight = parse_weight(combined_text)
+    if weight:
+        return weight
+
+    if jsonld:
+        weight_data = jsonld.get("weight", "")
+        if isinstance(weight_data, dict):
+            weight_data = weight_data.get("value", "")
+        weight = parse_weight(str(weight_data))
+        if weight:
+            return weight
+
+    title_tag = soup.find("title")
+    if title_tag:
+        weight = parse_weight(title_tag.get_text(strip=True))
+        if weight:
+            return weight
+
+    h1 = soup.find("h1")
+    if h1:
+        weight = parse_weight(h1.get_text(strip=True))
+        if weight:
+            return weight
+
+    weight_elements = soup.find_all(["span", "div", "p", "li"], class_=re.compile(r"weight|poids|size|taille|format", re.I))
+    for el in weight_elements:
+        weight = parse_weight(el.get_text(strip=True))
+        if weight:
+            return weight
+
+    breadcrumbs = soup.find_all(class_=re.compile(r"breadcrumb", re.I))
+    for bc in breadcrumbs:
+        weight = parse_weight(bc.get_text(strip=True))
+        if weight:
+            return weight
+
+    page_text = soup.get_text(" ", strip=True).lower().replace(",", ".")
+    weight_patterns = [
+        r"(?:poids|contenance|format|taille|net\s*wt|net\s+weight)\s*[:\s]*(\d+(?:\.\d+)?)\s*kg",
+        r"(?:poids|contenance|format|taille|net\s*wt|net\s+weight)\s*[:\s]*(\d{3,5})\s*g(?:r|ramme)?",
+        r"(\d+(?:\.\d+)?)\s*kg\s*(?:de\s+)?(?:whey|prot[ée]ine|poudre)",
+        r"(?:whey|prot[ée]ine|poudre)\s*(?:de\s+)?(\d+(?:\.\d+)?)\s*kg",
+    ]
+
+    for pattern in weight_patterns:
+        match = re.search(pattern, page_text)
+        if match:
+            groups = match.groups()
+            val_str = groups[0]
+            val = float(val_str)
+            if "kg" in pattern or val < 100:
+                if 0.1 <= val <= 25:
+                    return val
+            else:
+                if 100 <= val <= 25000:
+                    return val / 1000
+
+    general_kg = re.findall(r"(\d+(?:\.\d+)?)\s*kg", page_text)
+    for v_str in general_kg:
+        v = float(v_str)
+        if 0.2 <= v <= 12:
+            return v
+
+    general_g = re.findall(r"(\d{3,5})\s*g(?:r|ramme)?", page_text)
+    for v_str in general_g:
+        v = float(v_str)
+        if 200 <= v <= 12000:
+            return v / 1000
+
+    return None
+
+
 def extract_product_data(url: str) -> dict | None:
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -326,6 +544,8 @@ def extract_product_data(url: str) -> dict | None:
             name = title_tag.get_text(strip=True) if title_tag else ""
         if not brand:
             brand = og.get("product:brand", "") or microdata.get("brand", "")
+        if not brand:
+            brand = extract_brand_from_text(name, url)
         if price is None:
             price = parse_price(og.get("product:price:amount", "")) or parse_price(microdata.get("price", ""))
         if not currency or currency == "EUR":
@@ -337,7 +557,7 @@ def extract_product_data(url: str) -> dict | None:
 
         if not name or price is None:
             html_price = None
-            for cls in ["price", "product-price", "prix", "current-price"]:
+            for cls in ["price", "product-price", "prix", "current-price", "sale-price", "regular-price"]:
                 el = soup.find(class_=re.compile(cls, re.I))
                 if el:
                     html_price = parse_price(el.get_text())
@@ -357,27 +577,7 @@ def extract_product_data(url: str) -> dict | None:
         if not name or not name.strip():
             name = "Produit inconnu"
 
-        all_text = (name + " " + (jsonld.get("description", "") if jsonld else "")).lower()
-
-        weight = parse_weight(all_text)
-        if not weight and jsonld:
-            weight_str = jsonld.get("weight", "")
-            if isinstance(weight_str, dict):
-                weight_str = weight_str.get("value", "")
-            weight = parse_weight(str(weight_str))
-        if not weight:
-            page_text = soup.get_text().lower()
-            weight_match = re.search(r"(\d+(?:[.,]\d+)?)\s*kg", page_text)
-            if weight_match:
-                w = float(weight_match.group(1).replace(",", "."))
-                if 0.1 <= w <= 25:
-                    weight = w
-            if not weight:
-                weight_match = re.search(r"(\d{3,5})\s*g(?:r|ramme)?", page_text)
-                if weight_match:
-                    g = float(weight_match.group(1))
-                    if 100 <= g <= 25000:
-                        weight = g / 1000
+        weight = extract_weight_comprehensive(soup, name, jsonld)
 
         price_per_kg = None
         if price and weight and weight > 0:
@@ -390,26 +590,17 @@ def extract_product_data(url: str) -> dict | None:
                 protein_per_100g = parse_protein(nutrition.get("proteinContent", ""))
 
         if not protein_per_100g:
-            page_text = soup.get_text().lower()
-            patterns = [
-                r"prot[ée]ines?\s*[:/]?\s*(\d+(?:[.,]\d+)?)\s*g",
-                r"(\d+(?:[.,]\d+)?)\s*g\s*(?:de\s+)?prot[ée]ines?",
-                r"protein\s*[:/]?\s*(\d+(?:[.,]\d+)?)\s*g",
-            ]
-            for pattern in patterns:
-                match = re.search(pattern, page_text)
-                if match:
-                    val = float(match.group(1).replace(",", "."))
-                    if 10 < val <= 100:
-                        protein_per_100g = val
-                        break
+            nutrition_data = extract_nutrition_from_table(soup)
+            protein_per_100g = nutrition_data.get("protein")
 
         page_full_text = soup.get_text(" ", strip=True)
         ingredients_text = find_ingredients_block(page_full_text)
         analysis_text = ingredients_text or page_full_text
 
+        all_text = (name + " " + (jsonld.get("description", "") if jsonld else "") + " " + page_full_text[:3000]).lower()
+
         sweeteners = detect_sweeteners(analysis_text)
-        whey_type = detect_whey_type(name + " " + (all_text or "") + " " + (analysis_text or ""))
+        whey_type = detect_whey_type(name + " " + all_text[:2000])
         made_in_france = detect_made_in_france(page_full_text)
         has_aminogram = detect_aminogram(page_full_text)
         mentions_bcaa = detect_bcaa(page_full_text)
@@ -429,8 +620,8 @@ def extract_product_data(url: str) -> dict | None:
         global_score = calculate_global_score(price_per_kg, protein_per_100g, health_score)
 
         return {
-            "nom": name,
-            "marque": brand,
+            "nom": name.strip(),
+            "marque": brand.strip() if brand else "",
             "url": url,
             "prix": price,
             "devise": currency,

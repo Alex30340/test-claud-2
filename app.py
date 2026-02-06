@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 import time
+import html as html_module
 from datetime import datetime
 
 from scraper import scrape_products, extract_product_data, BraveAPIError, SEARCH_QUERIES
@@ -71,6 +72,10 @@ def whey_type_label(wtype):
     return labels.get((wtype or "unknown").lower(), "❓ Inconnu")
 
 
+def is_valid(val):
+    return val is not None and not (isinstance(val, float) and pd.isna(val))
+
+
 def render_product_card(rank, row):
     s_global = row.get("score_global")
     s_prix = row.get("score_prix")
@@ -78,123 +83,103 @@ def render_product_card(rank, row):
     s_sante = row.get("score_sante")
     color = score_color(s_global)
 
-    nom = row.get("nom", "Produit inconnu") or "Produit inconnu"
-    if len(nom) > 80:
-        nom = nom[:77] + "..."
+    nom = html_module.escape(str(row.get("nom", "Produit inconnu") or "Produit inconnu"))
+    if len(nom) > 90:
+        nom = nom[:87] + "..."
 
-    col_rank, col_info, col_scores = st.columns([0.8, 4, 4])
+    prix = row.get("prix")
+    devise = row.get("devise", "EUR")
+    poids = row.get("poids_kg")
+    prix_kg = row.get("prix_par_kg")
+    prot = row.get("proteines_100g")
+    type_whey = row.get("type_whey", "unknown")
+    made_fr = row.get("made_in_france", False)
+    has_sucr = row.get("has_sucralose", False)
+    has_ace = row.get("has_acesulfame_k", False)
+    has_asp = row.get("has_aspartame", False)
+    has_amino = row.get("has_aminogram", False)
+    has_bcaa = row.get("mentions_bcaa", False)
+    marque = html_module.escape(str(row.get("marque", "") or ""))
+    url = row.get("url", "")
 
-    with col_rank:
-        st.markdown(
-            f"<div style='text-align:center;padding-top:10px;'>"
-            f"<span style='font-size:2em;font-weight:bold;color:{color};'>#{rank}</span>"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
+    prot_color = "#2ecc71" if is_valid(prot) and prot >= 80 else ("#f39c12" if is_valid(prot) and prot >= 70 else ("#e74c3c" if is_valid(prot) else "#888"))
+    prix_kg_color = "#2ecc71" if is_valid(prix_kg) and prix_kg <= 30 else ("#f39c12" if is_valid(prix_kg) and prix_kg <= 50 else ("#e74c3c" if is_valid(prix_kg) else "#888"))
 
-    with col_info:
-        marque = row.get("marque", "")
-        marque_text = f" — {marque}" if marque else ""
-        st.markdown(f"**{nom}**{marque_text}")
+    prot_display = f"{prot:.1f}g" if is_valid(prot) else "—"
+    prix_kg_display = f"{prix_kg:.0f}€/kg" if is_valid(prix_kg) else "—"
+    prix_display = f"{prix:.2f}€" if is_valid(prix) else "—"
+    poids_display = f"{poids:.2f}kg" if is_valid(poids) else "—"
 
-        details = []
-        prix = row.get("prix")
-        devise = row.get("devise", "EUR")
-        poids = row.get("poids_kg")
-        prix_kg = row.get("prix_par_kg")
-        prot = row.get("proteines_100g")
+    sweetener_list = []
+    if has_sucr:
+        sweetener_list.append("Sucralose")
+    if has_ace:
+        sweetener_list.append("Ace-K")
+    if has_asp:
+        sweetener_list.append("Aspartame")
+    sweetener_html = f"<span style='color:#e74c3c;font-size:0.85em;'>⚠️ {', '.join(sweetener_list)}</span>" if sweetener_list else "<span style='color:#2ecc71;font-size:0.85em;'>✅ Clean</span>"
 
-        prix_valid = prix is not None and not (isinstance(prix, float) and pd.isna(prix))
-        poids_valid = poids is not None and not (isinstance(poids, float) and pd.isna(poids))
-        prix_kg_valid = prix_kg is not None and not (isinstance(prix_kg, float) and pd.isna(prix_kg))
-        prot_valid = prot is not None and not (isinstance(prot, float) and pd.isna(prot))
+    marque_html = f"<span style='color:#888;font-size:0.85em;'>{marque}</span>" if marque else ""
+    whey_label = whey_type_label(type_whey)
+    france_html = "🇫🇷" if made_fr else ""
+    amino_html = ""
+    if has_amino:
+        amino_html = "<span style='font-size:0.85em;'>🧬 Amino</span>"
+    elif has_bcaa:
+        amino_html = "<span style='font-size:0.85em;'>💊 BCAA</span>"
 
-        details.append(f"💰 {prix:.2f} {devise}" if prix_valid else "💰 Prix : inconnu")
-        details.append(f"📦 {poids:.2f} kg" if poids_valid else "📦 Poids : inconnu")
-        details.append(f"📊 {prix_kg:.2f} EUR/kg" if prix_kg_valid else "📊 Prix/kg : inconnu")
-        details.append(f"🥩 {prot:.1f}g prot/100g" if prot_valid else "🥩 Proteines : inconnu")
+    link_html = f"<a href='{url}' target='_blank' style='font-size:0.8em;color:#3498db;text-decoration:none;'>🔗 Voir</a>" if url else ""
 
-        st.markdown(" | ".join(details))
+    card_html = f"""
+    <div style='border:1px solid #333;border-radius:12px;padding:14px 18px;margin-bottom:10px;background:linear-gradient(135deg, rgba(30,30,40,0.5), rgba(20,20,30,0.3));'>
+      <div style='display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;'>
+        <div style='flex-shrink:0;text-align:center;min-width:50px;'>
+          <div style='font-size:1.8em;font-weight:bold;color:{color};'>#{rank}</div>
+          <div style='font-size:1.5em;font-weight:bold;color:{color};'>{score_label(s_global)}</div>
+        </div>
 
-        type_whey = row.get("type_whey", "unknown")
-        made_fr = row.get("made_in_france", False)
-        has_sucr = row.get("has_sucralose", False)
-        has_ace = row.get("has_acesulfame_k", False)
-        has_asp = row.get("has_aspartame", False)
-        has_amino = row.get("has_aminogram", False)
-        has_bcaa = row.get("mentions_bcaa", False)
+        <div style='flex:1;min-width:200px;'>
+          <div style='font-size:1.05em;font-weight:bold;margin-bottom:4px;'>{nom}</div>
+          <div style='margin-bottom:6px;'>{marque_html} {whey_label} {france_html} {amino_html}</div>
+          <div style='display:flex;gap:20px;flex-wrap:wrap;margin-bottom:6px;'>
+            <div>
+              <div style='font-size:0.75em;color:#999;'>PROT / 100g</div>
+              <div style='font-size:1.4em;font-weight:bold;color:{prot_color};'>{prot_display}</div>
+            </div>
+            <div>
+              <div style='font-size:0.75em;color:#999;'>PRIX / KG</div>
+              <div style='font-size:1.4em;font-weight:bold;color:{prix_kg_color};'>{prix_kg_display}</div>
+            </div>
+            <div>
+              <div style='font-size:0.75em;color:#999;'>PRIX</div>
+              <div style='font-size:1.1em;'>{prix_display}</div>
+            </div>
+            <div>
+              <div style='font-size:0.75em;color:#999;'>POIDS</div>
+              <div style='font-size:1.1em;'>{poids_display}</div>
+            </div>
+          </div>
+          <div>{sweetener_html} {link_html}</div>
+        </div>
 
-        health_details = []
-        health_details.append(f"Type: {whey_type_label(type_whey)}")
-        health_details.append(f"🇫🇷 France: {bool_icon(made_fr)}")
-        if has_amino:
-            health_details.append(f"Aminogramme: {bool_icon(has_amino)}")
-        elif has_bcaa:
-            health_details.append(f"BCAA: {bool_icon(has_bcaa)}")
-
-        sweetener_parts = []
-        if has_sucr:
-            sweetener_parts.append("Sucralose")
-        if has_ace:
-            sweetener_parts.append("Acesulfame-K")
-        if has_asp:
-            sweetener_parts.append("Aspartame")
-        if sweetener_parts:
-            health_details.append(f"⚠️ Edulcorants: {', '.join(sweetener_parts)}")
-        else:
-            health_details.append("✅ Sans edulcorant detecte")
-
-        st.markdown(" | ".join(health_details))
-
-        url = row.get("url", "")
-        if url:
-            st.markdown(f"[Voir le produit]({url})")
-
-    with col_scores:
-        sc1, sc2, sc3, sc4 = st.columns(4)
-        with sc1:
-            st.markdown(
-                f"<div style='text-align:center;'>"
-                f"<div style='font-size:0.75em;color:#666;'>Sante</div>"
-                f"<div style='font-size:1.3em;font-weight:bold;color:{score_color(s_sante)};'>{score_label(s_sante)}</div>"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
-        with sc2:
-            st.markdown(
-                f"<div style='text-align:center;'>"
-                f"<div style='font-size:0.75em;color:#666;'>Prix</div>"
-                f"<div style='font-size:1.3em;font-weight:bold;color:{score_color(s_prix)};'>{score_label(s_prix)}</div>"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
-        with sc3:
-            st.markdown(
-                f"<div style='text-align:center;'>"
-                f"<div style='font-size:0.75em;color:#666;'>Nutrition</div>"
-                f"<div style='font-size:1.3em;font-weight:bold;color:{score_color(s_nutri)};'>{score_label(s_nutri)}</div>"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
-        with sc4:
-            st.markdown(
-                f"<div style='text-align:center;'>"
-                f"<div style='font-size:0.75em;color:#666;'>Global</div>"
-                f"<div style='font-size:1.6em;font-weight:bold;color:{color};'>{score_label(s_global)}</div>"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
-
-        s_global_na = s_global is None or (isinstance(s_global, float) and pd.isna(s_global))
-        if s_global_na:
-            missing = []
-            if not prix_kg_valid:
-                missing.append("prix/kg")
-            if not prot_valid:
-                missing.append("proteines")
-            st.caption(f"⚠️ Score incomplet : donnees manquantes ({', '.join(missing)})")
-
-    st.divider()
+        <div style='display:flex;gap:12px;flex-wrap:wrap;'>
+          <div style='text-align:center;min-width:55px;'>
+            <div style='font-size:0.7em;color:#999;'>SANTE</div>
+            <div style='font-size:1.2em;font-weight:bold;color:{score_color(s_sante)};'>{score_label(s_sante)}</div>
+          </div>
+          <div style='text-align:center;min-width:55px;'>
+            <div style='font-size:0.7em;color:#999;'>PRIX</div>
+            <div style='font-size:1.2em;font-weight:bold;color:{score_color(s_prix)};'>{score_label(s_prix)}</div>
+          </div>
+          <div style='text-align:center;min-width:55px;'>
+            <div style='font-size:0.7em;color:#999;'>NUTRI</div>
+            <div style='font-size:1.2em;font-weight:bold;color:{score_color(s_nutri)};'>{score_label(s_nutri)}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+    st.markdown(card_html, unsafe_allow_html=True)
 
 
 def render_results(products_data, is_dataframe=True):
@@ -207,26 +192,48 @@ def render_results(products_data, is_dataframe=True):
 
     st.subheader(f"Resultats : {len(df)} produits analyses")
 
-    col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+    with_prot = df["proteines_100g"].dropna().shape[0] if "proteines_100g" in df.columns else 0
+    with_prix = df["prix_par_kg"].dropna().shape[0] if "prix_par_kg" in df.columns else 0
+    with_score = df["score_global"].dropna().shape[0] if "score_global" in df.columns else 0
+
+    avg_prot = df["proteines_100g"].dropna().mean() if with_prot > 0 else None
+    avg_prix_kg = df["prix_par_kg"].dropna().mean() if with_prix > 0 else None
+    best_prot = df["proteines_100g"].dropna().max() if with_prot > 0 else None
+    best_prix = df["prix_par_kg"].dropna().min() if with_prix > 0 else None
+
+    col_s1, col_s2, col_s3, col_s4, col_s5, col_s6 = st.columns(6)
     with col_s1:
-        st.metric("Produits trouves", len(df))
+        st.metric("Produits", len(df))
     with col_s2:
-        with_score = df["score_global"].dropna().shape[0]
-        st.metric("Avec score complet", f"{with_score}/{len(df)}")
+        st.metric("Avec proteines", f"{with_prot}/{len(df)}")
     with col_s3:
-        if "made_in_france" in df.columns:
-            fr_count = df["made_in_france"].sum() if df["made_in_france"].dtype == bool else 0
-            st.metric("Fabrication France", int(fr_count))
-        else:
-            st.metric("Donnees partielles", len(df) - with_score)
+        st.metric("Avec prix/kg", f"{with_prix}/{len(df)}")
     with col_s4:
-        if "has_sucralose" in df.columns:
-            no_sweet = (~df.get("has_sucralose", pd.Series([False])).fillna(False).astype(bool) &
-                        ~df.get("has_acesulfame_k", pd.Series([False])).fillna(False).astype(bool) &
-                        ~df.get("has_aspartame", pd.Series([False])).fillna(False).astype(bool)).sum()
-            st.metric("Sans edulcorant", int(no_sweet))
+        st.metric("Moy. prot/100g", f"{avg_prot:.1f}g" if avg_prot else "—")
+    with col_s5:
+        st.metric("Moy. prix/kg", f"{avg_prix_kg:.0f}€" if avg_prix_kg else "—")
+    with col_s6:
+        st.metric("Score complet", f"{with_score}/{len(df)}")
+
+    col_b1, col_b2, col_b3, col_b4 = st.columns(4)
+    with col_b1:
+        st.metric("Meilleur prot/100g", f"{best_prot:.1f}g" if best_prot else "—")
+    with col_b2:
+        st.metric("Meilleur prix/kg", f"{best_prix:.0f}€" if best_prix else "—")
+    with col_b3:
+        if "made_in_france" in df.columns:
+            fr_count = int(df["made_in_france"].fillna(False).astype(bool).sum())
+            st.metric("Fabrication France", fr_count)
         else:
-            st.metric("Donnees partielles", len(df) - with_score)
+            st.metric("France", "—")
+    with col_b4:
+        if "has_sucralose" in df.columns:
+            no_sweet = int((~df.get("has_sucralose", pd.Series([False])).fillna(False).astype(bool) &
+                        ~df.get("has_acesulfame_k", pd.Series([False])).fillna(False).astype(bool) &
+                        ~df.get("has_aspartame", pd.Series([False])).fillna(False).astype(bool)).sum())
+            st.metric("Sans edulcorant", no_sweet)
+        else:
+            st.metric("Clean", "—")
 
     st.divider()
     st.subheader("Classement par produit")
