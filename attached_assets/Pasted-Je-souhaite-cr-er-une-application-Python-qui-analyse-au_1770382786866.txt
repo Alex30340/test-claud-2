@@ -1,0 +1,147 @@
+Je souhaite créer une application Python qui analyse automatiquement le marché des protéines en poudre (whey, isolate, hydrolysate, vegan, etc.) en France et récupère automatiquement les données produits depuis internet sans que l'utilisateur fournisse manuellement les sites.
+
+Objectif : construire la base d’un futur SaaS comparateur de protéines.
+
+L’application doit fonctionner de façon autonome et produire un fichier exploitable dans Excel.
+
+Fonctionnement attendu
+
+Le programme doit :
+
+Interroger automatiquement internet via une API de recherche (ex : Brave Search API ou Bing API).
+
+Chercher des produits liés aux mots-clés :
+
+whey protein
+
+whey isolate
+
+whey hydrolysate
+
+protéine whey 1kg
+
+clear whey isolate
+
+protéine musculation whey
+
+Récupérer automatiquement les URLs produits depuis les résultats.
+
+Nettoyer les URLs et supprimer :
+
+forums
+
+blogs
+
+comparatifs
+
+réseaux sociaux
+
+vidéos
+
+Visiter chaque page produit automatiquement.
+
+Récupérer les données via JSON-LD schema.org quand présent.
+
+Données à récupérer pour chaque produit
+
+Si disponibles :
+
+Nom du produit
+
+Marque
+
+URL
+
+Prix actuel
+
+Devise
+
+Disponibilité
+
+Poids du produit (kg)
+
+Prix au kg
+
+Protéines pour 100g
+
+Date de récupération
+
+Score produit
+
+Le programme doit calculer :
+
+Score Prix / Valeur :
+
+20 €/kg = score 100
+
+80 €/kg = score 0
+
+interpolation linéaire
+
+Score nutrition :
+
+60 g protéines = score 0
+
+90 g protéines = score 100
+
+Score global :
+50% valeur + 50% nutrition.
+
+Technologies à utiliser
+
+Projet Python avec :
+
+playwright pour charger les pages dynamiques
+
+requests ou httpx pour API
+
+BeautifulSoup pour parsing HTML
+
+pandas pour export
+
+fichier CSV final
+
+Structure du projet demandée
+
+Créer automatiquement :
+
+main.py
+requirements.txt
+market_snapshot.csv (généré)
+
+Contraintes importantes
+
+limiter la fréquence de requêtes
+
+ignorer pages non produits
+
+gérer erreurs réseau
+
+éviter crash si données absentes
+
+code modulaire pour future API SaaS
+
+Résultat attendu
+
+Quand on exécute :
+
+python main.py
+
+
+Le programme doit :
+
+Scanner internet
+
+Trouver des produits whey
+
+Extraire les données
+
+Calculer scores
+
+Produire un fichier CSV trié par score
+
+Évolution future
+
+Le code doit pouvoir être transformé ensuite en API REST pour un site SaaS.
+
+Génère tout le code nécessaire pour que l'application fonctionne directement.
