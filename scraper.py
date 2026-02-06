@@ -11,7 +11,7 @@ from bs4 import BeautifulSoup
 
 from scoring import (
     calculate_price_score,
-    calculate_nutrition_score,
+    calculate_protein_score,
     calculate_health_score,
     calculate_global_score,
 )
@@ -323,6 +323,129 @@ def detect_bcaa(text: str) -> bool:
     return "bcaa" in t or "2:1:1" in t
 
 
+ARTIFICIAL_FLAVOR_PATTERNS = [
+    r"ar[oô]mes?\s+artificiel",
+    r"ar[oô]mes?\s+synth[ée]tique",
+    r"ar[oô]me\s+identique\s+au\s+naturel",
+    r"artificial\s+flavo",
+]
+
+THICKENER_PATTERNS = [
+    r"gomme\s+(?:de\s+)?xanthane",
+    r"xanthan\s+gum",
+    r"carraghe?[ée]nane?s?",
+    r"carrageenan",
+    r"gomme\s+(?:de\s+)?guar",
+    r"guar\s+gum",
+    r"gomme\s+(?:de\s+)?cellulose",
+    r"[ée]paississant",
+    r"e407\b", r"e415\b", r"e412\b",
+    r"gomme\s+(?:d[''])?acacia",
+    r"e414\b",
+]
+
+COLORANT_PATTERNS = [
+    r"colorant",
+    r"e1[0-9]{2}\b",
+    r"dioxyde\s+de\s+titane",
+    r"e171\b",
+    r"beta[\s-]?carot[eè]ne",
+    r"caramel\s+color",
+]
+
+
+def detect_artificial_flavors(text: str) -> bool:
+    t = (text or "").lower()
+    return any(re.search(p, t) for p in ARTIFICIAL_FLAVOR_PATTERNS)
+
+
+def detect_thickeners(text: str) -> bool:
+    t = (text or "").lower()
+    return any(re.search(p, t) for p in THICKENER_PATTERNS)
+
+
+def detect_colorants(text: str) -> bool:
+    t = (text or "").lower()
+    return any(re.search(p, t) for p in COLORANT_PATTERNS)
+
+
+def count_ingredients(ingredients_text: str | None) -> int | None:
+    if not ingredients_text:
+        return None
+    cleaned = re.sub(r"\(.*?\)", "", ingredients_text)
+    parts = re.split(r"[,;]", cleaned)
+    parts = [p.strip() for p in parts if p.strip() and len(p.strip()) > 1]
+    return len(parts) if parts else None
+
+
+def extract_amino_values(text: str, protein_per_100g: float | None) -> dict:
+    result = {
+        "bcaa_per_100g_prot": None,
+        "leucine_g": None,
+        "isoleucine_g": None,
+        "valine_g": None,
+    }
+
+    if not text:
+        return result
+
+    t = (text or "").lower()
+
+    leucine_patterns = [
+        r"l[\-\s]?leucine\s*[:\s]*(\d+(?:[.,]\d+)?)\s*(?:mg|g)",
+        r"leucine\s*[:\s]*(\d+(?:[.,]\d+)?)\s*(?:mg|g)",
+        r"leucine\s*[:\(\|]*\s*(\d+(?:[.,]\d+)?)\s*(?:mg|g)",
+    ]
+    isoleucine_patterns = [
+        r"l[\-\s]?isoleucine\s*[:\s]*(\d+(?:[.,]\d+)?)\s*(?:mg|g)",
+        r"isoleucine\s*[:\s]*(\d+(?:[.,]\d+)?)\s*(?:mg|g)",
+    ]
+    valine_patterns = [
+        r"l[\-\s]?valine\s*[:\s]*(\d+(?:[.,]\d+)?)\s*(?:mg|g)",
+        r"valine\s*[:\s]*(\d+(?:[.,]\d+)?)\s*(?:mg|g)",
+    ]
+    bcaa_patterns = [
+        r"bcaa\s*(?:total|totaux)?\s*[:\s]*(\d+(?:[.,]\d+)?)\s*(?:mg|g)",
+        r"(\d+(?:[.,]\d+)?)\s*(?:mg|g)\s*(?:de\s+)?bcaa",
+    ]
+
+    def find_value(patterns, text):
+        for p in patterns:
+            m = re.search(p, text)
+            if m:
+                val = float(m.group(1).replace(",", "."))
+                unit_match = re.search(p, text)
+                full_match = unit_match.group(0) if unit_match else ""
+                if "mg" in full_match:
+                    val = val / 1000
+                if 0.1 <= val <= 50:
+                    return val
+        return None
+
+    result["leucine_g"] = find_value(leucine_patterns, t)
+    result["isoleucine_g"] = find_value(isoleucine_patterns, t)
+    result["valine_g"] = find_value(valine_patterns, t)
+
+    bcaa_direct = find_value(bcaa_patterns, t)
+    if bcaa_direct:
+        if protein_per_100g and protein_per_100g > 0:
+            result["bcaa_per_100g_prot"] = round((bcaa_direct / protein_per_100g) * 100, 1)
+    elif result["leucine_g"] and result["isoleucine_g"] and result["valine_g"]:
+        bcaa_total = result["leucine_g"] + result["isoleucine_g"] + result["valine_g"]
+        if protein_per_100g and protein_per_100g > 0:
+            result["bcaa_per_100g_prot"] = round((bcaa_total / protein_per_100g) * 100, 1)
+
+    if protein_per_100g and protein_per_100g > 0:
+        if result["leucine_g"]:
+            result["leucine_g"] = round((result["leucine_g"] / protein_per_100g) * 100, 1)
+        if result["isoleucine_g"]:
+            result["isoleucine_g"] = round((result["isoleucine_g"] / protein_per_100g) * 100, 1)
+        if result["valine_g"]:
+            result["valine_g"] = round((result["valine_g"] / protein_per_100g) * 100, 1)
+
+    return result
+
+
 def extract_brand_from_text(name: str, url: str) -> str:
     combined = (name + " " + url).lower()
     for brand in KNOWN_BRANDS:
@@ -627,21 +750,37 @@ def extract_product_data(url: str) -> dict | None:
         has_aminogram = detect_aminogram(page_full_text)
         mentions_bcaa = detect_bcaa(page_full_text)
 
+        has_artificial_flavors = detect_artificial_flavors(analysis_text)
+        has_thickeners = detect_thickeners(analysis_text)
+        has_colorants = detect_colorants(analysis_text)
+        ingredient_count = count_ingredients(ingredients_text)
+
+        amino_values = extract_amino_values(page_full_text, protein_per_100g)
+
         price_score = calculate_price_score(price_per_kg)
-        nutrition_score = calculate_nutrition_score(protein_per_100g)
-        health_score = calculate_health_score(
+
+        protein_score_result = calculate_protein_score(
             protein_per_100g=protein_per_100g,
-            whey_type=whey_type,
-            made_in_france=made_in_france,
+            bcaa_per_100g_prot=amino_values["bcaa_per_100g_prot"],
+            leucine_g=amino_values["leucine_g"],
+            isoleucine_g=amino_values["isoleucine_g"],
+            valine_g=amino_values["valine_g"],
+        )
+
+        health_result = calculate_health_score(
             has_sucralose=sweeteners.get("sucralose", False),
             has_acesulfame_k=sweeteners.get("acesulfame_k", False),
             has_aspartame=sweeteners.get("aspartame", False),
-            has_aminogram=has_aminogram,
-            mentions_bcaa=mentions_bcaa,
-            origin_label=origin["origin_label"],
-            origin_confidence=origin["origin_confidence"],
+            has_artificial_flavors=has_artificial_flavors,
+            has_thickeners=has_thickeners,
+            has_colorants=has_colorants,
+            ingredient_count=ingredient_count,
         )
-        global_score = calculate_global_score(price_per_kg, protein_per_100g, health_score)
+
+        global_score = calculate_global_score(
+            protein_score_result["score_proteique"],
+            health_result["score_sante"],
+        )
 
         return {
             "nom": name.strip(),
@@ -662,10 +801,19 @@ def extract_product_data(url: str) -> dict | None:
             "has_aspartame": sweeteners.get("aspartame", False),
             "has_aminogram": has_aminogram,
             "mentions_bcaa": mentions_bcaa,
+            "has_artificial_flavors": has_artificial_flavors,
+            "has_thickeners": has_thickeners,
+            "has_colorants": has_colorants,
+            "ingredient_count": ingredient_count,
+            "bcaa_per_100g_prot": amino_values["bcaa_per_100g_prot"],
+            "leucine_g": amino_values["leucine_g"],
+            "isoleucine_g": amino_values["isoleucine_g"],
+            "valine_g": amino_values["valine_g"],
+            "profil_suspect": protein_score_result["profil_suspect"],
             "ingredients": ingredients_text,
+            "score_proteique": protein_score_result["score_proteique"],
+            "score_sante": health_result["score_sante"],
             "score_prix": price_score,
-            "score_nutrition": nutrition_score,
-            "score_sante": health_score,
             "score_global": global_score,
             "date_recuperation": datetime.now().strftime("%Y-%m-%d %H:%M"),
         }
