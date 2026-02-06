@@ -870,6 +870,7 @@ def page_scan():
             scan_button = st.button("🚀 Lancer le scan", type="primary", use_container_width=False)
 
             if scan_button:
+                st.session_state.last_scan_results = None
                 status_container = st.empty()
                 progress_bar = st.progress(0)
                 detail_text = st.empty()
@@ -899,10 +900,8 @@ def page_scan():
                         status_container.success(
                             f"✅ {len(products)} produits trouves et sauvegardes ! (Scan #{scan_id})"
                         )
-
-                        df = pd.DataFrame(products)
-                        st.divider()
-                        render_results(df)
+                        st.session_state.last_scan_results = products
+                        st.session_state.last_scan_id = scan_id
                     else:
                         status_container.warning("Aucun produit trouve.")
 
@@ -910,6 +909,11 @@ def page_scan():
                     progress_bar.empty()
                     detail_text.empty()
                     status_container.error(f"Erreur API : {e}")
+
+            if "last_scan_results" in st.session_state and st.session_state.last_scan_results:
+                df = pd.DataFrame(st.session_state.last_scan_results)
+                st.divider()
+                render_results(df)
 
     with tab_manual:
         st.markdown("Entrez des URLs de pages produit (une par ligne) :")
@@ -957,12 +961,15 @@ def page_scan():
                     st.success(
                         f"✅ {len(products)} produits extraits et sauvegardes ! (Scan #{scan_id})"
                     )
-
-                    df = pd.DataFrame(products)
-                    st.divider()
-                    render_results(df)
+                    st.session_state.last_manual_results = products
+                    st.session_state.last_manual_scan_id = scan_id
                 else:
                     st.warning("Aucune donnee produit extraite.")
+
+        if "last_manual_results" in st.session_state and st.session_state.last_manual_results:
+            df = pd.DataFrame(st.session_state.last_manual_results)
+            st.divider()
+            render_results(df)
 
 
 # ── ROUTER ──
