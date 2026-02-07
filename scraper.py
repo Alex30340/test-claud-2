@@ -17,6 +17,7 @@ from scoring import (
 )
 from extractor import extract_price, extract_currency, extract_weight_kg, detect_needs_js_render
 from validator import validate_price, validate_weight, validate_price_per_kg, compute_confidence_v2
+from page_validator import is_bad_url, is_product_page as strict_is_product_page
 
 logger = logging.getLogger(__name__)
 
@@ -888,8 +889,10 @@ def extract_product_data(url: str) -> dict | None:
         jsonld = extract_jsonld(soup)
         og = extract_og_meta(soup)
 
-        if not jsonld and not is_product_page(soup, url):
-            logger.info(f"Skipping non-product page: {url}")
+        is_valid_product, page_reasons = strict_is_product_page(url, soup)
+        if not is_valid_product:
+            rejection = page_reasons.get("rejection_reason", "unknown")
+            logger.info(f"[PAGE_VALIDATOR] Skipping non-product page: {url} => {rejection}")
             return None
         microdata = extract_microdata(soup)
 
@@ -1211,6 +1214,11 @@ def _search_discovery_queries(api_key: str, discovery_queries: list[dict],
         for u in urls:
             normalized = u.rstrip("/").lower()
             if normalized in seen:
+                continue
+
+            bad, bad_reason = is_bad_url(u)
+            if bad:
+                logger.debug(f"[DISCOVERY] Pre-filter rejected URL: {u} => {bad_reason}")
                 continue
 
             domain = urlparse(u).netloc.replace("www.", "").lower()

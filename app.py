@@ -16,6 +16,7 @@ from db import (
     get_all_products, get_catalog_stats, get_pipeline_runs,
 )
 from auth import hash_password, verify_password
+from page_validator import validate_url_debug
 
 init_db()
 
@@ -1512,6 +1513,57 @@ def page_admin():
 
     except Exception as e:
         st.error(f"Erreur chargement des stats Discovery Health : {e}")
+
+    st.divider()
+    st.subheader("🔎 Debug : Validateur de page produit")
+    st.markdown("Testez si une URL sera acceptee ou rejetee par le validateur strict.")
+
+    debug_url = st.text_input("URL a tester", placeholder="https://example.fr/produit/whey-isolate-1kg", key="debug_url")
+
+    if st.button("Tester cette URL", key="btn_debug_validate"):
+        if not debug_url or not debug_url.startswith("http"):
+            st.warning("Entrez une URL valide (commencant par http).")
+        else:
+            with st.spinner("Analyse de la page en cours..."):
+                debug_result = validate_url_debug(debug_url)
+
+            if debug_result["status"] == "accepted":
+                st.success(f"Page ACCEPTEE via : {debug_result['reasons'].get('acceptance_path', '?')}")
+            elif debug_result["status"] == "rejected_url":
+                st.error(f"URL REJETEE (pre-filtre) : {debug_result['bad_url_reason']}")
+            elif debug_result["status"] == "rejected":
+                st.error(f"Page REJETEE : {debug_result['reasons'].get('rejection_reason', '?')}")
+            elif debug_result.get("error"):
+                st.error(f"Erreur : {debug_result['error']}")
+            else:
+                st.warning(f"Statut : {debug_result['status']}")
+
+            with st.expander("Details complets", expanded=True):
+                signals = debug_result.get("reasons", {}).get("signals", {})
+
+                if signals.get("jsonld"):
+                    jl = signals["jsonld"]
+                    cols = st.columns(4)
+                    cols[0].metric("JSON-LD Product", "Oui" if jl.get("has_product") else "Non")
+                    cols[1].metric("Offer", "Oui" if jl.get("has_offer") else "Non")
+                    cols[2].metric("Prix", "Oui" if jl.get("has_price") else "Non")
+                    cols[3].metric("Disponibilite", "Oui" if jl.get("has_availability") else "Non")
+                    if jl.get("product_name"):
+                        st.text(f"Nom produit JSON-LD : {jl['product_name'][:100]}")
+
+                signal_labels = {
+                    "add_to_cart": "Signaux panier",
+                    "price": "Signaux prix",
+                    "weight": "Signaux poids",
+                }
+                for key, label in signal_labels.items():
+                    sigs = signals.get(key, [])
+                    if sigs:
+                        st.success(f"{label} : {', '.join(str(s) for s in sigs)}")
+                    else:
+                        st.warning(f"{label} : aucun signal detecte")
+
+                st.json(debug_result)
 
 
 # ── ROUTER ──

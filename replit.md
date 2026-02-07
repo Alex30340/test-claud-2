@@ -11,6 +11,7 @@ Application SaaS Python/Streamlit pour comparer les proteines whey en France. Mo
 - `auth.py` - Hashage et verification de mots de passe (bcrypt)
 - `extractor.py` - Extraction prix 4 niveaux (JSON-LD, OpenGraph, Next/Nuxt, regex), currency, poids, detection needs_js_render
 - `validator.py` - Validation prix/poids, compute_confidence_v2 avec support needs_js_render
+- `page_validator.py` - Validateur strict de page produit (is_bad_url, is_product_page, extract_jsonld_product_offer, has_add_to_cart_signals, has_price_signals, has_weight_signals, validate_url_debug)
 - `scraper.py` - Recherche Brave Search API + extraction multi-couche + pipelines Discovery/Refresh + confidence scoring
 - `scoring.py` - Calcul des notes proteique /10, sante /10, et globale (60/40)
 - `test_extractor.py` - Tests unitaires extracteur (15 cas : JSON-LD, OG, Next.js, regex, needs_js_render, crossed prices)
@@ -150,10 +151,21 @@ Multi-couche pour maximiser la couverture :
 - Si needs_js_render=True et pas de prix => confidence plafonnee a 0.3
 - Catalogue filtre par defaut a confidence >= 0.75 (exclut pages JS sans prix)
 
-### Product Page Validation
-- Pages without JSON-LD Product are validated via is_product_page() which checks: add-to-cart buttons, og:type product, price+product CSS classes, product URL path signals
+### Product Page Validation (Strict - page_validator.py)
+- **is_bad_url(url)** : pre-filtre URL avant scraping (blogs, forums, guides, categories, PDF, domaines bloques)
+- **is_product_page(url, html)** : validation stricte apres scraping, retourne (bool, reasons dict)
+- **Regles d'acceptation** :
+  - (JSON-LD Product + Offer avec price ou availability) => accepte
+  - (signaux panier + signaux prix + signaux poids) => accepte
+  - (signaux panier + signaux prix) => accepte (fallback sans poids)
+- **Regles de rejet** :
+  - is_bad_url() True => rejet immediat
+  - H1/title contient "comparatif/guide/top/meilleur" sans JSON-LD Offer => editorial, rejet
+  - word_count > 1200 sans panier ni JSON-LD Offer => page contenu, rejet
+  - Signaux insuffisants => rejet
+- **Integration discovery** : is_bad_url applique AVANT scraping, is_product_page applique APRES scraping
+- **Debug admin** : section "Validateur de page produit" dans admin pour tester une URL et voir tous les signaux
 - Non-whey products are filtered out by checking whey keywords in title/URL/H1
-- Editorial/comparison pages detected via NON_PRODUCT_TITLE_KEYWORDS in page title
 - Price validation: range 8-200 EUR, old/crossed-out prices excluded, price_per_kg >200 EUR/kg flagged as suspicious
 
 Sites exclus : Amazon (503), Decathlon (403), reseaux sociaux, sites media/sante (doctissimo, passeportsante, etc.)
