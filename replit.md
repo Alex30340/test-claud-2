@@ -1,23 +1,45 @@
 # ProteinScan - Comparateur de Proteines Whey SaaS
 
 ## Overview
-Application SaaS Python/Streamlit pour comparer les proteines whey en France. Permet aux utilisateurs de creer un compte, lancer des scans automatiques du marche via Brave Search API, voir les notes individuelles par produit (proteique /10, sante /10, globale /10), consulter l'historique, et exporter en CSV/Excel.
+Application SaaS Python/Streamlit pour comparer les proteines whey en France. Moteur produit avec separation Product/Offer, pipelines Discovery (Brave Search) et Refresh (re-scrape prix), scoring /10 (proteique + sante), catalogue avec score de confiance, et interface admin.
 
 ## Architecture
 
 ### Files
-- `app.py` - Interface Streamlit SaaS (auth, dashboard, scan, historique, cartes produit V2 avec notes /10)
-- `db.py` - Couche base de donnees PostgreSQL (users, scans, scan_items avec colonnes amino, additifs, scores)
+- `app.py` - Interface Streamlit SaaS (auth, dashboard, catalogue, scan, admin, cartes produit V2)
+- `db.py` - Couche base de donnees PostgreSQL (users, scans, scan_items, products, offers, pipeline_runs)
 - `auth.py` - Hashage et verification de mots de passe (bcrypt)
-- `scraper.py` - Recherche Brave Search API + extraction multi-couche (JSON-LD, OG, microdata, HTML) + detection complete (edulcorants, aromes, epaississants, colorants, amino acids, ingredients)
+- `scraper.py` - Recherche Brave Search API + extraction multi-couche + pipelines Discovery/Refresh + confidence scoring
 - `scoring.py` - Calcul des notes proteique /10, sante /10, et globale (60/40)
 - `main.py` - Script CLI (usage autonome)
 - `.streamlit/config.toml` - Configuration Streamlit (port 5000)
 
 ### Database (PostgreSQL)
 - `users` - Comptes utilisateurs (email, password_hash, plan, scans_this_month)
-- `scans` - Historique des scans par utilisateur
-- `scan_items` - Produits extraits rattaches a un scan (inclut type_whey, made_in_france, origin_label, origin_confidence, has_sucralose, has_acesulfame_k, has_aspartame, has_aminogram, mentions_bcaa, has_artificial_flavors, has_thickeners, has_colorants, ingredient_count, bcaa_per_100g_prot, leucine_g, isoleucine_g, valine_g, profil_suspect, score_proteique, score_sante, score_global, ingredients)
+- `scans` - Historique des scans par utilisateur (legacy, toujours fonctionnel)
+- `scan_items` - Produits extraits rattaches a un scan (legacy)
+- `products` - Catalogue stable (name, brand, type_whey, nutrition, ingredients, scores, origin, normalized_key pour dedup)
+- `offers` - Offres marchands volatiles (product_id FK, merchant, url, prix, poids_kg, prix_par_kg, confidence, fail_count, is_active)
+- `pipeline_runs` - Historique des executions Discovery/Refresh (run_type, status, counts, timestamps)
+
+### Product/Offer Architecture
+- **Product** = donnees stables (ingredients, scores, type whey, origine, flags edulcorants/additifs)
+- **Offer** = donnees volatiles (prix, disponibilite, marchand, URL, poids, confidence)
+- Un Product peut avoir plusieurs Offers (meme produit chez differents marchands)
+- Deduplication par `normalized_key` (brand + name normalise, sans poids)
+
+### Pipelines
+- **Discovery** (hebdomadaire) : Brave Search -> URLs candidates -> extraction parallele -> Product + Offer avec confidence -> filtre confidence < 0.2
+- **Refresh** (quotidien) : re-scrape des Offers actives (confidence >= 0.3) -> mise a jour prix/dispo -> mark failed apres 3 echecs
+
+### Confidence Scoring (0-1)
+Score composite base sur :
+- Presence JSON-LD Product (0.9 vs 0.4)
+- Prix extrait (0.8 vs 0.1)
+- Poids extrait (0.7 vs 0.2)
+- Proteines extraites (0.8 vs 0.2)
+- Prix/kg dans fourchette 10-100 EUR/kg (0.9 vs 0.2-0.5)
+- Nom produit > 10 chars (0.6 vs 0.3)
 
 ### Dependencies
 - streamlit, httpx, beautifulsoup4, pandas, lxml, openpyxl, bcrypt, psycopg2-binary
@@ -48,7 +70,7 @@ Commence a 10, puis malus :
 - Liste d'ingredients longue (>6 ingredients) : -1
 
 #### Note Globale
-- Note globale = (note proteique × 0.6) + (note sante × 0.4)
+- Note globale = (note proteique x 0.6) + (note sante x 0.4)
 - Le prix n'entre PAS dans la note globale mais est affiche comme information
 
 #### Interpretation
@@ -72,15 +94,25 @@ Commence a 10, puis malus :
 - Comptage ingredients depuis bloc ingredients
 - Extraction bloc ingredients depuis page HTML
 
+### UI Pages
+- **Login/Signup** : authentification utilisateur
+- **Dashboard** : tableau de bord avec historique des scans
+- **Catalogue** : vue du catalogue produit (Product/Offer), filtres, tri, badges confiance
+- **Nouveau scan** : scan automatique (Brave) ou analyse manuelle d'URLs
+- **Admin** : lancer Discovery/Refresh, voir historique pipelines, stats catalogue
+- **Vue scan** : detail d'un scan passe
+
 ### UI V2 Features
-- Notes sur /10 avec etoiles (★★★★☆ sur 5 etoiles, echelle /10)
-- Badges visuels : type whey, origine, edulcorants, aromes, epaississants, colorants, profil suspect, nb ingredients
+- Notes sur /10 avec etoiles (echelle /10 -> 5 etoiles)
+- Badges visuels : type whey, origine, edulcorants, aromes, epaississants, colorants, profil suspect, nb ingredients, confiance
+- Badge confiance colore : vert >= 70%, jaune >= 40%, rouge < 40%
 - Ligne "Pourquoi ce score ?" expliquant le classement
 - Metriques BCAA/100g prot et Leucine/100g prot affichees sur chaque carte
 - Sous-scores : Note Proteique et Note Sante avec etoiles separees
-- Barre de filtres : tri multi-critere, toggles (sans edulcorant, France, composition propre ≥8/10), dropdown type whey, recherche texte
+- Barre de filtres : tri multi-critere, toggles (sans edulcorant, France, composition propre >= 8/10), dropdown type whey, recherche texte
 - Legende/bareme repliable (accordion) avec tableaux de notation detailles
 - Tableau complet avec barres de progression /10
+- Export CSV/Excel
 
 ### Data Extraction Strategy
 Multi-couche pour maximiser la couverture :
@@ -114,3 +146,4 @@ Sites exclus : Amazon (503), Decathlon (403), reseaux sociaux, sites media/sante
 - Database is auto-initialized on app startup via init_db() with automatic migration for new columns.
 - Future vision: whey is just one tab; the platform will include profile analysis, muscle programs, diet programs, and recommendations based on user profile (height, weight, body analysis).
 - Score prix calcule_price_score() est conserve pour affichage informatif mais ne fait plus partie de la note globale.
+- Legacy scan system (scans + scan_items) coexiste avec le nouveau systeme Product/Offer pour compatibilite.

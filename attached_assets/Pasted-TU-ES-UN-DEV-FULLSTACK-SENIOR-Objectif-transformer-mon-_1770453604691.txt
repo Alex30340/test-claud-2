@@ -1,0 +1,78 @@
+TU ES UN DEV FULLSTACK SENIOR. Objectif : transformer mon comparateur whey en VRAI MOTEUR PRODUIT fiable (catalogue + offres) et refaire l’UI en V2 lisible.
+
+CONTEXTE ACTUEL
+- Backend Python (FastAPI) + scraping web + Brave Search API.
+- J’ai déjà un scoring “note protéique / note santé / note globale” (pondération 60/40), et je veux conserver ce barème (cf fiche).
+- Problème actuel : URLs non produits, prix faux, pages non achetables.
+
+OBJECTIF “VRAI MOTEUR PRODUIT”
+1) Séparer Product (stable) et Offer (change souvent) :
+   - Product: id, name, brand, category/type (isolate etc), ingredients, nutrition (protein/100g), origin_label, flags (sucralose…), aminogramme…
+   - Offer: id, product_id, merchant, url, price, currency, weight_kg, price_per_kg, availability, updated_at, confidence.
+
+2) Implémenter 2 pipelines distincts :
+   A) DISCOVERY RUN (scan global) = 1 fois/semaine
+      - utilise Brave Search pour trouver des pages candidates
+      - filtre fort les pages (exclure blog/forum/pdf/catégorie)
+      - scrape uniquement ce qui ressemble à une page produit
+      - extraction PRIORITAIRE via JSON-LD schema.org (Product/Offer)
+      - si JSON-LD absent, fallback regex
+      - créer/mettre à jour Product + créer Offer
+      - marquer “needs_review” si confiance faible
+
+   B) REFRESH RUN (mise à jour) = 1 fois/jour
+      - NE PAS relancer Brave
+      - reprendre uniquement les Offers existantes validées (confidence >= seuil)
+      - re-scraper le prix (JSON-LD first)
+      - recalculer price_per_kg + price_score uniquement
+      - mettre à jour updated_at
+
+3) EXTRACTION FIABLE (IMPORTANT)
+- Toujours essayer d’extraire prix/stock via JSON-LD (schema.org) :
+  - Product.name, brand, gtin/ean si disponible
+  - Offer.price, priceCurrency, availability
+- Ajouter un score de confiance (0..1) :
+  - JSON-LD Offer + prix + poids => 0.9
+  - regex prix sans poids => 0.4
+  - page sans prix => 0.2 (rejeter du top)
+- Règles anti-prix faux :
+  - ignorer prix < 5€ ou > 200€
+  - ignorer poids < 0.2kg ou > 5kg
+  - si prix/kg hors [10;100] => confidence baisse
+
+4) ORIGINE / TRANSPARENCE
+- Ajouter origin_label: "France" | "EU" | "Hors EU" | "Inconnu"
+- Ajouter origin_confidence (0..1)
+- Bonus dans note santé si France, mais PAS de pénalité si Inconnu.
+
+5) ENDPOINTS BACKEND
+Créer ces endpoints FastAPI :
+- POST /discovery/run  (params: queries, limit_urls, sleep_s)
+- POST /refresh/run    (params: limit_offers, sleep_s)
+- GET  /products       (liste produits + meilleure offre associée)
+- GET  /products/top   (tri par note globale, filtre confidence)
+- GET  /offers         (liste offres)
+- POST /products/{id}/validate  (marque product/offer comme validé, passe needs_review=false)
+
+6) UI V2 (lisible, cartes)
+- Page WheyRankingV2 :
+  - cards par produit :
+    - Rang, nom, score global en étoiles (score/2 car /10 -> /5)
+    - sous-étoiles: protéique, santé, prix (prix optionnel)
+    - badges : [ISOLATE] [NO SUCRALOSE] [AMINOGRAM] [ORIGINE: FR/EU/?]
+    - afficher “Confiance données: 82%”
+    - prix/kg + bouton “Voir le produit”
+  - Filtres/tri : Global / Protéique / Santé / Prix ; toggles : sans sucralose, fabrication FR, aminogramme ; search.
+  - Responsive mobile.
+
+7) AUTOMATISATION
+- Ajouter une commande ou script pour lancer :
+  - discovery manuel
+  - refresh quotidien
+- Sur Replit, proposer une solution simple (cron interne / scheduler / bouton admin), sans dépendre d’un service externe.
+
+LIVRABLE ATTENDU
+- Proposer une structure de fichiers.
+- Fournir le code COMPLET des fichiers (backend + frontend) prêt à exécuter sur Replit.
+- Pas de pseudo-code. Gestion d’erreurs propre. Logs.
+- Garder mon barème note_proteique/note_sante/note_globale (60/40) + origine + édulcorants.

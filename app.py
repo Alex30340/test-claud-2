@@ -4,11 +4,12 @@ import os
 import html as html_module
 from datetime import datetime
 
-from scraper import scrape_products, extract_product_data, BraveAPIError, SEARCH_QUERIES
+from scraper import scrape_products, extract_product_data, BraveAPIError, SEARCH_QUERIES, run_discovery, run_refresh
 from scoring import calculate_price_score
 from db import (
     init_db, create_user, get_user_by_email,
     save_scan, get_user_scans, get_scan_items,
+    get_all_products, get_catalog_stats, get_pipeline_runs,
 )
 from auth import hash_password, verify_password
 
@@ -680,6 +681,308 @@ Commence a 10, puis malus :
             )
 
 
+# ── CATALOG CARD & RESULTS ──
+
+def get_confidence_badge(confidence):
+    if confidence is None:
+        return "<span class='ps-badge ps-badge-gray'>🔍 Confiance: N/A</span>"
+    pct = int(confidence * 100)
+    if confidence >= 0.7:
+        return f"<span class='ps-badge ps-badge-green'>🔍 Confiance: {pct}%</span>"
+    if confidence >= 0.4:
+        return f"<span class='ps-badge ps-badge-gold'>🔍 Confiance: {pct}%</span>"
+    return f"<span class='ps-badge ps-badge-red'>🔍 Confiance: {pct}%</span>"
+
+
+def render_catalog_card(rank, product):
+    mapped = {
+        "nom": product.get("name", "Produit inconnu"),
+        "marque": product.get("brand", ""),
+        "prix": product.get("offer_prix"),
+        "prix_par_kg": product.get("offer_prix_par_kg"),
+        "url": product.get("offer_url", ""),
+        "poids_kg": product.get("offer_poids_kg"),
+        "proteines_100g": product.get("proteines_100g"),
+        "type_whey": product.get("type_whey", "unknown"),
+        "origin_label": product.get("origin_label", "Inconnu"),
+        "has_sucralose": product.get("has_sucralose", False),
+        "has_acesulfame_k": product.get("has_acesulfame_k", False),
+        "has_aspartame": product.get("has_aspartame", False),
+        "has_aminogram": product.get("has_aminogram", False),
+        "mentions_bcaa": product.get("mentions_bcaa", False),
+        "has_artificial_flavors": product.get("has_artificial_flavors", False),
+        "has_thickeners": product.get("has_thickeners", False),
+        "has_colorants": product.get("has_colorants", False),
+        "ingredient_count": product.get("ingredient_count"),
+        "bcaa_per_100g_prot": product.get("bcaa_per_100g_prot"),
+        "leucine_g": product.get("leucine_g"),
+        "isoleucine_g": product.get("isoleucine_g"),
+        "valine_g": product.get("valine_g"),
+        "profil_suspect": product.get("profil_suspect", False),
+        "score_proteique": product.get("score_proteique"),
+        "score_sante": product.get("score_sante"),
+        "score_global": product.get("score_global"),
+    }
+
+    render_product_card_v2(rank, mapped)
+
+    confidence = product.get("offer_confidence")
+    badge_html = get_confidence_badge(confidence)
+    st.html(CARD_CSS + f"<div style='margin-top:-8px;margin-bottom:12px;padding-left:95px;'>{badge_html}</div>")
+
+
+def render_catalog_results(products):
+    mapped_products = []
+    for p in products:
+        mapped_products.append({
+            "nom": p.get("name", "Produit inconnu"),
+            "marque": p.get("brand", ""),
+            "prix": p.get("offer_prix"),
+            "prix_par_kg": p.get("offer_prix_par_kg"),
+            "url": p.get("offer_url", ""),
+            "poids_kg": p.get("offer_poids_kg"),
+            "proteines_100g": p.get("proteines_100g"),
+            "type_whey": p.get("type_whey", "unknown"),
+            "origin_label": p.get("origin_label", "Inconnu"),
+            "has_sucralose": p.get("has_sucralose", False),
+            "has_acesulfame_k": p.get("has_acesulfame_k", False),
+            "has_aspartame": p.get("has_aspartame", False),
+            "has_aminogram": p.get("has_aminogram", False),
+            "mentions_bcaa": p.get("mentions_bcaa", False),
+            "has_artificial_flavors": p.get("has_artificial_flavors", False),
+            "has_thickeners": p.get("has_thickeners", False),
+            "has_colorants": p.get("has_colorants", False),
+            "ingredient_count": p.get("ingredient_count"),
+            "bcaa_per_100g_prot": p.get("bcaa_per_100g_prot"),
+            "leucine_g": p.get("leucine_g"),
+            "isoleucine_g": p.get("isoleucine_g"),
+            "valine_g": p.get("valine_g"),
+            "profil_suspect": p.get("profil_suspect", False),
+            "score_proteique": p.get("score_proteique"),
+            "score_sante": p.get("score_sante"),
+            "score_global": p.get("score_global"),
+            "offer_confidence": p.get("offer_confidence"),
+        })
+
+    df = pd.DataFrame(mapped_products)
+
+    for col, default in [("origin_label", "Inconnu"), ("has_artificial_flavors", False),
+                         ("has_thickeners", False), ("has_colorants", False),
+                         ("ingredient_count", None), ("bcaa_per_100g_prot", None),
+                         ("leucine_g", None), ("isoleucine_g", None), ("valine_g", None),
+                         ("profil_suspect", False), ("score_proteique", None)]:
+        if col not in df.columns:
+            df[col] = default
+
+    with_prot = df["proteines_100g"].dropna().shape[0] if "proteines_100g" in df.columns else 0
+    with_prix = df["prix_par_kg"].dropna().shape[0] if "prix_par_kg" in df.columns else 0
+    with_score = df["score_global"].dropna().shape[0] if "score_global" in df.columns else 0
+
+    avg_prot = df["proteines_100g"].dropna().mean() if with_prot > 0 else None
+    avg_prix_kg = df["prix_par_kg"].dropna().mean() if with_prix > 0 else None
+    avg_global = df["score_global"].dropna().mean() if with_score > 0 else None
+
+    st.subheader(f"🏆 Catalogue — {len(df)} produits")
+
+    col_s1, col_s2, col_s3, col_s4, col_s5 = st.columns(5)
+    with col_s1:
+        st.metric("Produits", len(df))
+    with col_s2:
+        st.metric("Donnees prot.", f"{with_prot}/{len(df)}")
+    with col_s3:
+        st.metric("Moy. prot/100g", f"{avg_prot:.1f}g" if avg_prot else "—")
+    with col_s4:
+        st.metric("Moy. prix/kg", f"{avg_prix_kg:.0f}€" if avg_prix_kg else "—")
+    with col_s5:
+        st.metric("Note moy.", f"{avg_global:.1f}/10" if avg_global else "—")
+
+    st.divider()
+
+    fcol1, fcol2, fcol3, fcol4, fcol5 = st.columns([2, 1.5, 1.5, 1.5, 2])
+
+    with fcol1:
+        sort_option = st.selectbox(
+            "Trier par",
+            ["Note Globale", "Note Proteique", "Note Sante", "Prix/kg (croissant)", "Proteines/100g (decroissant)"],
+            key="cat_sort_option",
+        )
+    with fcol2:
+        filter_no_sweetener = st.toggle("Sans edulcorant", key="cat_filter_no_sweet")
+    with fcol3:
+        filter_france = st.toggle("Fabrication France", key="cat_filter_france")
+    with fcol4:
+        filter_clean = st.toggle("Composition propre (≥8/10)", key="cat_filter_clean")
+    with fcol5:
+        type_options = ["Tous"] + sorted(set(
+            str(t).capitalize() for t in df["type_whey"].dropna().unique() if t and str(t) != "unknown"
+        ))
+        type_options_full = type_options + (["Unknown"] if "unknown" in df["type_whey"].fillna("unknown").str.lower().unique() else [])
+        filter_type = st.selectbox("Type de whey", type_options_full, key="cat_filter_type")
+
+    search_query = st.text_input("🔍 Rechercher un produit (nom ou marque)", key="cat_search_query", placeholder="Ex: myprotein, isolate, native...")
+
+    filtered_df = df.copy()
+
+    if search_query:
+        q = search_query.lower()
+        filtered_df = filtered_df[
+            filtered_df["nom"].fillna("").str.lower().str.contains(q, na=False) |
+            filtered_df["marque"].fillna("").str.lower().str.contains(q, na=False)
+        ]
+
+    if filter_no_sweetener:
+        filtered_df = filtered_df[
+            ~filtered_df.get("has_sucralose", pd.Series([False] * len(filtered_df))).fillna(False).astype(bool) &
+            ~filtered_df.get("has_acesulfame_k", pd.Series([False] * len(filtered_df))).fillna(False).astype(bool) &
+            ~filtered_df.get("has_aspartame", pd.Series([False] * len(filtered_df))).fillna(False).astype(bool)
+        ]
+
+    if filter_france:
+        if "origin_label" in filtered_df.columns:
+            filtered_df = filtered_df[filtered_df["origin_label"] == "France"]
+
+    if filter_clean:
+        if "score_sante" in filtered_df.columns:
+            filtered_df = filtered_df[filtered_df["score_sante"].fillna(0) >= 8]
+
+    if filter_type and filter_type != "Tous":
+        filtered_df = filtered_df[filtered_df["type_whey"].fillna("unknown").str.lower() == filter_type.lower()]
+
+    sort_map = {
+        "Note Globale": ("score_global", False),
+        "Note Proteique": ("score_proteique", False),
+        "Note Sante": ("score_sante", False),
+        "Prix/kg (croissant)": ("prix_par_kg", True),
+        "Proteines/100g (decroissant)": ("proteines_100g", False),
+    }
+    sort_col, sort_asc = sort_map.get(sort_option, ("score_global", False))
+
+    if sort_col in filtered_df.columns:
+        sorted_df = filtered_df.sort_values(sort_col, ascending=sort_asc, na_position="last")
+    else:
+        sorted_df = filtered_df
+
+    st.markdown(f"**{len(sorted_df)} produits affiches** sur {len(df)}")
+
+    for rank, (_, row) in enumerate(sorted_df.iterrows(), 1):
+        confidence = row.get("offer_confidence")
+        render_product_card_v2(rank, row)
+        badge_html = get_confidence_badge(confidence)
+        st.html(CARD_CSS + f"<div style='margin-top:-8px;margin-bottom:12px;padding-left:95px;'>{badge_html}</div>")
+
+    st.divider()
+    st.subheader("📊 Tableau complet")
+
+    display_cols = [
+        "nom", "marque", "proteines_100g", "bcaa_per_100g_prot", "leucine_g",
+        "prix_par_kg", "prix", "poids_kg",
+        "type_whey", "origin_label", "ingredient_count",
+        "has_sucralose", "has_acesulfame_k", "has_aspartame",
+        "has_artificial_flavors", "has_thickeners", "has_colorants",
+        "profil_suspect",
+        "score_proteique", "score_sante", "score_global",
+    ]
+    existing_cols = [c for c in display_cols if c in sorted_df.columns]
+
+    column_config = {
+        "nom": st.column_config.TextColumn("Produit", width="large"),
+        "marque": st.column_config.TextColumn("Marque"),
+        "proteines_100g": st.column_config.NumberColumn("Prot/100g", format="%.1f g"),
+        "bcaa_per_100g_prot": st.column_config.NumberColumn("BCAA/100g prot", format="%.1f g"),
+        "leucine_g": st.column_config.NumberColumn("Leucine/100g prot", format="%.1f g"),
+        "prix_par_kg": st.column_config.NumberColumn("Prix/kg", format="%.0f €"),
+        "prix": st.column_config.NumberColumn("Prix", format="%.2f €"),
+        "poids_kg": st.column_config.NumberColumn("Poids", format="%.2f kg"),
+        "type_whey": st.column_config.TextColumn("Type"),
+        "origin_label": st.column_config.TextColumn("Origine"),
+        "ingredient_count": st.column_config.NumberColumn("Nb ingr."),
+        "has_sucralose": st.column_config.CheckboxColumn("Sucralose"),
+        "has_acesulfame_k": st.column_config.CheckboxColumn("Ace-K"),
+        "has_aspartame": st.column_config.CheckboxColumn("Aspartame"),
+        "has_artificial_flavors": st.column_config.CheckboxColumn("Aromes art."),
+        "has_thickeners": st.column_config.CheckboxColumn("Epaississants"),
+        "has_colorants": st.column_config.CheckboxColumn("Colorants"),
+        "profil_suspect": st.column_config.CheckboxColumn("Profil suspect"),
+        "score_proteique": st.column_config.ProgressColumn("Proteique /10", min_value=0, max_value=10),
+        "score_sante": st.column_config.ProgressColumn("Sante /10", min_value=0, max_value=10),
+        "score_global": st.column_config.ProgressColumn("Global /10", min_value=0, max_value=10),
+    }
+
+    st.dataframe(
+        sorted_df[existing_cols],
+        column_config=column_config,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.divider()
+    st.subheader("📥 Exporter")
+
+    col_e1, col_e2 = st.columns(2)
+    csv_data = sorted_df.to_csv(index=False, sep=";", encoding="utf-8-sig")
+
+    with col_e1:
+        st.download_button(
+            label="Telecharger CSV",
+            data=csv_data,
+            file_name=f"catalogue_whey_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv",
+            use_container_width=True,
+            key="cat_csv_download",
+        )
+
+    with col_e2:
+        excel_path = "/tmp/catalogue_export.xlsx"
+        sorted_df.to_excel(excel_path, index=False, sheet_name="Catalogue")
+        with open(excel_path, "rb") as f:
+            st.download_button(
+                label="Telecharger Excel",
+                data=f.read(),
+                file_name=f"catalogue_whey_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key="cat_excel_download",
+            )
+
+
+# ── SIDEBAR ──
+
+def render_sidebar():
+    user = st.session_state.user
+    with st.sidebar:
+        st.markdown(f"### 👤 {user['display_name']}")
+        st.markdown(f"📧 {user['email']}")
+        plan_label = "Pro ⭐" if user["plan"] == "pro" else "Gratuit"
+        st.markdown(f"📋 Plan : **{plan_label}**")
+
+        st.divider()
+
+        if st.button("📦 Catalogue", use_container_width=True):
+            st.session_state.page = "catalogue"
+            st.session_state.view_scan_id = None
+            st.rerun()
+
+        if st.button("🔍 Nouveau scan", type="primary", use_container_width=True):
+            st.session_state.page = "scan"
+            st.session_state.view_scan_id = None
+            st.rerun()
+
+        if st.button("📊 Tableau de bord", use_container_width=True):
+            st.session_state.page = "dashboard"
+            st.session_state.view_scan_id = None
+            st.rerun()
+
+        if st.button("⚙️ Admin", use_container_width=True):
+            st.session_state.page = "admin"
+            st.session_state.view_scan_id = None
+            st.rerun()
+
+        st.divider()
+        if st.button("Se deconnecter", use_container_width=True):
+            logout()
+            st.rerun()
+
+
 # ── AUTH PAGES ──
 
 def page_login():
@@ -758,29 +1061,7 @@ def page_login():
 
 def page_dashboard():
     user = st.session_state.user
-
-    with st.sidebar:
-        st.markdown(f"### 👤 {user['display_name']}")
-        st.markdown(f"📧 {user['email']}")
-        plan_label = "Pro ⭐" if user["plan"] == "pro" else "Gratuit"
-        st.markdown(f"📋 Plan : **{plan_label}**")
-
-        st.divider()
-
-        if st.button("Nouveau scan", type="primary", use_container_width=True):
-            st.session_state.page = "scan"
-            st.session_state.view_scan_id = None
-            st.rerun()
-
-        if st.button("Tableau de bord", use_container_width=True):
-            st.session_state.page = "dashboard"
-            st.session_state.view_scan_id = None
-            st.rerun()
-
-        st.divider()
-        if st.button("Se deconnecter", use_container_width=True):
-            logout()
-            st.rerun()
+    render_sidebar()
 
     if st.session_state.view_scan_id:
         page_view_scan()
@@ -848,22 +1129,7 @@ def page_view_scan():
 
 def page_scan():
     user = st.session_state.user
-
-    with st.sidebar:
-        st.markdown(f"### 👤 {user['display_name']}")
-        plan_label = "Pro ⭐" if user["plan"] == "pro" else "Gratuit"
-        st.markdown(f"📋 Plan : **{plan_label}**")
-
-        st.divider()
-
-        if st.button("Tableau de bord", use_container_width=True):
-            st.session_state.page = "dashboard"
-            st.rerun()
-
-        st.divider()
-        if st.button("Se deconnecter", use_container_width=True):
-            logout()
-            st.rerun()
+    render_sidebar()
 
     st.title("🔍 Nouveau scan")
 
@@ -979,6 +1245,189 @@ def page_scan():
             render_results(df)
 
 
+# ── CATALOGUE PAGE ──
+
+def page_catalogue():
+    user = st.session_state.user
+    render_sidebar()
+
+    st.title("📦 Catalogue de produits")
+
+    stats = get_catalog_stats()
+
+    col1, col2, col3, col4, col5 = st.columns(5)
+    with col1:
+        st.metric("Produits", stats["total_products"])
+    with col2:
+        st.metric("Offres actives", stats["total_active_offers"])
+    with col3:
+        st.metric("Confiance moy.", f"{stats['avg_confidence']:.0%}")
+    with col4:
+        last_disc = stats["last_discovery"]
+        if last_disc:
+            if isinstance(last_disc, str):
+                disc_display = last_disc
+            else:
+                disc_display = last_disc.strftime("%d/%m/%Y %H:%M")
+        else:
+            disc_display = "Jamais"
+        st.metric("Dernier discovery", disc_display)
+    with col5:
+        st.metric("A revoir", stats["products_needing_review"])
+
+    st.divider()
+
+    min_confidence = st.slider(
+        "Confiance minimum des offres",
+        min_value=0.0,
+        max_value=1.0,
+        value=0.3,
+        step=0.05,
+        key="cat_confidence_slider",
+    )
+
+    products = get_all_products(min_confidence=min_confidence, limit=200)
+
+    if not products:
+        st.info("Aucun produit dans le catalogue. Lancez un Discovery depuis la page Admin pour alimenter le catalogue.")
+        return
+
+    render_catalog_results(products)
+
+
+# ── ADMIN PAGE ──
+
+def page_admin():
+    user = st.session_state.user
+    render_sidebar()
+
+    st.title("⚙️ Administration")
+
+    stats = get_catalog_stats()
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Produits", stats["total_products"])
+    with col2:
+        st.metric("Offres actives", stats["total_active_offers"])
+    with col3:
+        st.metric("Confiance moy.", f"{stats['avg_confidence']:.0%}")
+    with col4:
+        st.metric("A revoir", stats["products_needing_review"])
+
+    st.divider()
+
+    disc_col, refresh_col = st.columns(2)
+
+    with disc_col:
+        st.subheader("🔍 Discovery")
+        st.markdown("Recherche de nouveaux produits whey via Brave Search et extraction des donnees.")
+
+        if not api_key:
+            st.warning("Cle API Brave Search non configuree.")
+        else:
+            if st.button("🚀 Lancer un Discovery", type="primary", use_container_width=True, key="btn_discovery"):
+                status_container = st.empty()
+                progress_bar = st.progress(0)
+                detail_text = st.empty()
+
+                def disc_progress(current, total, detail=""):
+                    if total > 0:
+                        progress_bar.progress(min(current / total, 1.0))
+                    detail_text.text(detail)
+
+                def disc_status(msg):
+                    status_container.info(msg)
+
+                try:
+                    with st.spinner("Discovery en cours..."):
+                        result = run_discovery(
+                            api_key=api_key,
+                            progress_callback=disc_progress,
+                            status_callback=disc_status,
+                        )
+                    progress_bar.empty()
+                    detail_text.empty()
+                    status_container.success(
+                        f"✅ Discovery termine ! "
+                        f"Produits trouves: {result.get('products_found', 0)}, "
+                        f"Offres mises a jour: {result.get('offers_updated', 0)}, "
+                        f"Erreurs: {result.get('errors', 0)}"
+                    )
+                except Exception as e:
+                    progress_bar.empty()
+                    detail_text.empty()
+                    status_container.error(f"Erreur Discovery : {e}")
+
+    with refresh_col:
+        st.subheader("🔄 Refresh")
+        st.markdown("Met a jour les prix et la disponibilite des offres existantes.")
+
+        if st.button("🔄 Lancer un Refresh", type="primary", use_container_width=True, key="btn_refresh"):
+            status_container_r = st.empty()
+            progress_bar_r = st.progress(0)
+            detail_text_r = st.empty()
+
+            def ref_progress(current, total, detail=""):
+                if total > 0:
+                    progress_bar_r.progress(min(current / total, 1.0))
+                detail_text_r.text(detail)
+
+            def ref_status(msg):
+                status_container_r.info(msg)
+
+            try:
+                with st.spinner("Refresh en cours..."):
+                    result = run_refresh(
+                        progress_callback=ref_progress,
+                        status_callback=ref_status,
+                    )
+                progress_bar_r.empty()
+                detail_text_r.empty()
+                status_container_r.success(
+                    f"✅ Refresh termine ! "
+                    f"Offres mises a jour: {result.get('offers_updated', 0)}, "
+                    f"Erreurs: {result.get('errors', 0)}"
+                )
+            except Exception as e:
+                progress_bar_r.empty()
+                detail_text_r.empty()
+                status_container_r.error(f"Erreur Refresh : {e}")
+
+    st.divider()
+    st.subheader("📋 Historique des pipelines")
+
+    runs = get_pipeline_runs(limit=20)
+    if not runs:
+        st.info("Aucun pipeline execute pour le moment.")
+    else:
+        runs_data = []
+        for r in runs:
+            started = r["started_at"]
+            if isinstance(started, datetime):
+                started = started.strftime("%d/%m/%Y %H:%M")
+            finished = r.get("finished_at")
+            if isinstance(finished, datetime):
+                finished = finished.strftime("%d/%m/%Y %H:%M")
+            elif finished is None:
+                finished = "—"
+
+            runs_data.append({
+                "Date": started,
+                "Type": r["run_type"].capitalize(),
+                "Statut": r["status"].capitalize(),
+                "Produits": r.get("products_found", 0),
+                "Offres MAJ": r.get("offers_updated", 0),
+                "Erreurs": r.get("errors", 0),
+                "Fin": finished,
+            })
+
+        st.dataframe(
+            pd.DataFrame(runs_data),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+
 # ── ROUTER ──
 
 if st.session_state.user is None:
@@ -989,6 +1438,10 @@ else:
         page_dashboard()
     elif page == "scan":
         page_scan()
+    elif page == "catalogue":
+        page_catalogue()
+    elif page == "admin":
+        page_admin()
     elif page == "login":
         st.session_state.page = "dashboard"
         page_dashboard()

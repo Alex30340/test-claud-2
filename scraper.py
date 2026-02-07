@@ -961,11 +961,106 @@ def extract_product_data(url: str) -> dict | None:
             "score_prix": price_score,
             "score_global": global_score,
             "date_recuperation": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "_has_jsonld": jsonld is not None,
         }
 
     except Exception as e:
         logger.warning(f"Error extracting data from {url}: {e}")
         return None
+
+
+def compute_confidence(data: dict, has_jsonld: bool) -> float:
+    score = 0.0
+    factors = 0
+
+    if has_jsonld:
+        score += 0.9
+    else:
+        score += 0.4
+    factors += 1
+
+    if data.get("prix") is not None:
+        score += 0.8
+    else:
+        score += 0.1
+    factors += 1
+
+    if data.get("poids_kg") is not None:
+        score += 0.7
+    else:
+        score += 0.2
+    factors += 1
+
+    if data.get("proteines_100g") is not None:
+        score += 0.8
+    else:
+        score += 0.2
+    factors += 1
+
+    if data.get("prix_par_kg") is not None:
+        ppk = data["prix_par_kg"]
+        if 10 <= ppk <= 100:
+            score += 0.9
+        elif ppk <= 150:
+            score += 0.5
+        else:
+            score += 0.2
+    factors += 1
+
+    nom = data.get("nom", "")
+    if nom and len(nom) > 10:
+        score += 0.6
+    elif nom:
+        score += 0.3
+    factors += 1
+
+    confidence = round(score / factors, 2) if factors > 0 else 0.3
+    return min(1.0, max(0.0, confidence))
+
+
+def split_product_offer(raw: dict) -> tuple[dict, dict]:
+    product_data = {
+        "name": raw.get("nom", ""),
+        "brand": raw.get("marque", ""),
+        "type_whey": raw.get("type_whey", "unknown"),
+        "proteines_100g": raw.get("proteines_100g"),
+        "bcaa_per_100g_prot": raw.get("bcaa_per_100g_prot"),
+        "leucine_g": raw.get("leucine_g"),
+        "isoleucine_g": raw.get("isoleucine_g"),
+        "valine_g": raw.get("valine_g"),
+        "has_aminogram": raw.get("has_aminogram", False),
+        "mentions_bcaa": raw.get("mentions_bcaa", False),
+        "ingredients": raw.get("ingredients"),
+        "ingredient_count": raw.get("ingredient_count"),
+        "has_sucralose": raw.get("has_sucralose", False),
+        "has_acesulfame_k": raw.get("has_acesulfame_k", False),
+        "has_aspartame": raw.get("has_aspartame", False),
+        "has_artificial_flavors": raw.get("has_artificial_flavors", False),
+        "has_thickeners": raw.get("has_thickeners", False),
+        "has_colorants": raw.get("has_colorants", False),
+        "origin_label": raw.get("origin_label", "Inconnu"),
+        "origin_confidence": raw.get("origin_confidence", 0.3),
+        "made_in_france": raw.get("made_in_france", False),
+        "profil_suspect": raw.get("profil_suspect", False),
+        "score_proteique": raw.get("score_proteique"),
+        "score_sante": raw.get("score_sante"),
+        "score_global": raw.get("score_global"),
+    }
+
+    merchant = urlparse(raw.get("url", "")).netloc.replace("www.", "")
+
+    offer_data = {
+        "merchant": merchant,
+        "url": raw.get("url", ""),
+        "prix": raw.get("prix"),
+        "devise": raw.get("devise", "EUR"),
+        "poids_kg": raw.get("poids_kg"),
+        "prix_par_kg": raw.get("prix_par_kg"),
+        "disponibilite": raw.get("disponibilite", ""),
+        "confidence": raw.get("confidence", 0.5),
+    }
+
+    return product_data, offer_data
 
 
 def _extract_with_log(url: str) -> dict | None:
@@ -1006,3 +1101,172 @@ def scrape_products(api_key: str, progress_callback=None, status_callback=None) 
     products.sort(key=lambda p: p.get("score_global") or -1, reverse=True)
 
     return products
+
+
+def run_discovery(api_key: str, progress_callback=None, status_callback=None) -> dict:
+    from db import upsert_product, upsert_offer, create_pipeline_run, update_pipeline_run
+
+    run_id = create_pipeline_run("discovery")
+    stats = {"products_found": 0, "offers_created": 0, "errors": 0, "skipped": 0}
+
+    try:
+        if status_callback:
+            status_callback("Recherche de produits via Brave Search...")
+
+        urls = search_all_queries(api_key, progress_callback)
+
+        if status_callback:
+            status_callback(f"{len(urls)} URLs candidates. Extraction en parallele...")
+
+        completed = 0
+        total = len(urls)
+
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+            futures = {executor.submit(_extract_with_log, url): url for url in urls}
+
+            for future in as_completed(futures):
+                completed += 1
+                url = futures[future]
+
+                if progress_callback:
+                    progress_callback(completed, total, f"Extraction: {urlparse(url).netloc}")
+
+                result = future.result()
+                if result is None:
+                    stats["skipped"] += 1
+                    continue
+
+                try:
+                    confidence = compute_confidence(result, has_jsonld=bool(result.get("_has_jsonld", False)))
+                    result["confidence"] = confidence
+
+                    if confidence < 0.2:
+                        stats["skipped"] += 1
+                        continue
+
+                    product_data, offer_data = split_product_offer(result)
+                    product_data["needs_review"] = confidence < 0.5
+
+                    product_id = upsert_product(product_data)
+                    upsert_offer(product_id, offer_data)
+
+                    stats["products_found"] += 1
+                    stats["offers_created"] += 1
+                except Exception as e:
+                    logger.warning(f"Error saving product/offer for {url}: {e}")
+                    stats["errors"] += 1
+
+        update_pipeline_run(
+            run_id, "completed",
+            products_found=stats["products_found"],
+            offers_updated=stats["offers_created"],
+            errors=stats["errors"],
+            details=f"URLs scannees: {total}, Ignores: {stats['skipped']}",
+        )
+
+    except Exception as e:
+        logger.error(f"Discovery pipeline error: {e}")
+        update_pipeline_run(run_id, "failed", errors=1, details=str(e))
+        raise
+
+    return stats
+
+
+def refresh_offer_price(url: str) -> dict | None:
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+    }
+
+    try:
+        with httpx.Client(timeout=HTTP_TIMEOUT, follow_redirects=True, verify=False) as client:
+            response = client.get(url, headers=headers)
+            response.raise_for_status()
+
+        soup = BeautifulSoup(response.text, "lxml")
+        jsonld = extract_jsonld(soup)
+        og = extract_og_meta(soup)
+        microdata = extract_microdata(soup)
+
+        price = extract_best_price(soup, jsonld, og, microdata)
+        weight = extract_weight_comprehensive(soup, "", jsonld)
+
+        price_per_kg = None
+        if price and weight and weight > 0:
+            price_per_kg = round(price / weight, 2)
+            if price_per_kg > 200:
+                price_per_kg = None
+
+        availability = ""
+        if jsonld:
+            offers = jsonld.get("offers", {})
+            if isinstance(offers, list):
+                offers = offers[0] if offers else {}
+            availability = offers.get("availability", "")
+            if availability:
+                availability = availability.split("/")[-1]
+
+        has_jsonld = jsonld is not None
+        confidence = 0.9 if has_jsonld and price else (0.6 if price else 0.3)
+
+        return {
+            "prix": price,
+            "prix_par_kg": price_per_kg,
+            "disponibilite": availability,
+            "confidence": confidence,
+        }
+
+    except Exception as e:
+        logger.warning(f"Refresh error for {url}: {e}")
+        return None
+
+
+def run_refresh(progress_callback=None, status_callback=None) -> dict:
+    from db import get_active_offers, update_offer_price, mark_offer_failed
+    from db import create_pipeline_run, update_pipeline_run
+
+    run_id = create_pipeline_run("refresh")
+    stats = {"updated": 0, "failed": 0, "total": 0}
+
+    try:
+        offers = get_active_offers(min_confidence=0.3)
+        stats["total"] = len(offers)
+
+        if status_callback:
+            status_callback(f"Mise a jour de {len(offers)} offres actives...")
+
+        for i, offer in enumerate(offers):
+            if progress_callback:
+                progress_callback(i + 1, len(offers), f"Refresh: {urlparse(offer['url']).netloc}")
+
+            result = refresh_offer_price(offer["url"])
+
+            if result and result.get("prix") is not None:
+                update_offer_price(
+                    offer["id"],
+                    prix=result["prix"],
+                    prix_par_kg=result.get("prix_par_kg"),
+                    disponibilite=result.get("disponibilite", ""),
+                    confidence=result.get("confidence", 0.5),
+                )
+                stats["updated"] += 1
+            else:
+                mark_offer_failed(offer["id"])
+                stats["failed"] += 1
+
+            time.sleep(0.5)
+
+        update_pipeline_run(
+            run_id, "completed",
+            offers_updated=stats["updated"],
+            errors=stats["failed"],
+            details=f"Total offres: {stats['total']}",
+        )
+
+    except Exception as e:
+        logger.error(f"Refresh pipeline error: {e}")
+        update_pipeline_run(run_id, "failed", errors=1, details=str(e))
+        raise
+
+    return stats
