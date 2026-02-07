@@ -1668,6 +1668,17 @@ def page_admin():
             with st.spinner("Analyse de la page en cours..."):
                 debug_result = validate_url_debug(debug_url)
 
+            page_type = debug_result.get("page_type", "unknown")
+            type_colors = {
+                "product": "green",
+                "article": "red",
+                "category": "orange",
+                "blocked": "red",
+                "unknown": "gray",
+            }
+            type_color = type_colors.get(page_type, "gray")
+            st.markdown(f"**Type de page :** :{type_color}[{page_type.upper()}]")
+
             if debug_result["status"] == "accepted":
                 st.success(f"Page ACCEPTEE via : {debug_result['reasons'].get('acceptance_path', '?')}")
             elif debug_result["status"] == "rejected_url":
@@ -1679,7 +1690,29 @@ def page_admin():
             else:
                 st.warning(f"Statut : {debug_result['status']}")
 
-            with st.expander("Details complets", expanded=True):
+            col_proof, col_article = st.columns(2)
+            with col_proof:
+                has_proof = debug_result.get("has_purchase_proof", False)
+                proof_details = debug_result.get("purchase_proof", [])
+                if has_proof:
+                    st.success(f"Preuve d'achat : OUI")
+                    for p in proof_details:
+                        st.caption(f"  - {p}")
+                else:
+                    st.error("Preuve d'achat : NON")
+                    st.caption("Pas de JSON-LD Offer+price, pas de meta prix, pas de bouton panier+prix")
+
+            with col_article:
+                is_article = debug_result.get("is_article", False)
+                article_signals = debug_result.get("article_signals", [])
+                if is_article:
+                    st.error(f"Page article/guide detectee")
+                    for s in article_signals:
+                        st.caption(f"  - {s}")
+                else:
+                    st.success("Page non-article")
+
+            with st.expander("Signaux detailles", expanded=True):
                 signals = debug_result.get("reasons", {}).get("signals", {})
 
                 if signals.get("jsonld"):
@@ -1704,6 +1737,7 @@ def page_admin():
                     else:
                         st.warning(f"{label} : aucun signal detecte")
 
+            with st.expander("Donnees brutes JSON"):
                 st.json(debug_result)
 
     st.divider()

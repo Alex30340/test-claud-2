@@ -171,13 +171,23 @@ Multi-couche pour maximiser la couverture :
 - Si needs_js_render=True et pas de prix => confidence plafonnee a 0.3
 - Catalogue filtre par defaut a confidence >= 0.75 (exclut pages JS sans prix)
 
-### Product Page Validation (Strict - page_validator.py)
+### Product Page Validation (Strict Purchase-Proof - page_validator.py)
 - **is_bad_url(url)** : pre-filtre URL avant scraping (blogs, forums, guides, categories, PDF, domaines bloques)
-- **is_product_page(url, html)** : validation stricte apres scraping, retourne (bool, reasons dict)
+- **has_purchase_proof(soup)** : preuve d'achat requise pour accepter une page
+  - True si JSON-LD Product + Offer avec price ou availability
+  - OU si meta product:price:amount / og:price:amount
+  - OU si bouton achat (ajouter au panier, buy now, commander) ET prix detecte
+- **is_article_page(url, soup)** : detection articles/guides
+  - URL contient /blog/ /guide/ /types-de/ /conseils/ /bienfaits/ /utilisation/
+  - OU H1 contient "bienfaits" "utilisation" "guide" "comment" "tout savoir" etc.
+  - OU word_count > 1200 sans preuve d'achat
+- **is_product_page(url, html)** : validation stricte avec page_type
+  - if is_article_page AND NOT has_purchase_proof => False (page_type="article")
+  - if NOT has_purchase_proof => False (page_type="unknown")
+  - else True (page_type="product")
+  - Retourne page_type: "product"|"article"|"category"|"blocked"|"unknown"
 - **Regles d'acceptation** :
-  - (JSON-LD Product + Offer avec price ou availability) => accepte
-  - (signaux panier + signaux prix + signaux poids) => accepte
-  - (signaux panier + signaux prix) => accepte (fallback sans poids)
+  - has_purchase_proof True => accepte (via jsonld, meta_price, ou cart+price)
 - **Regles de rejet** :
   - is_bad_url() True => rejet immediat
   - H1/title contient "comparatif/guide/top/meilleur" sans JSON-LD Offer => editorial, rejet

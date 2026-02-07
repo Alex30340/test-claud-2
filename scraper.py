@@ -1337,28 +1337,37 @@ def _extract_with_whey_validation(url: str, use_resolver: bool = True) -> dict |
                 return None
 
         is_whey, whey_info = check_whey(response.text, url)
+        page_type = whey_info.get("page_type", "unknown")
 
         if is_whey:
             result = extract_product_data(url)
             if result:
                 result["_whey_validated"] = True
                 result["_whey_signals"] = whey_info.get("whey_signals", [])
+                result["_page_type"] = "product"
             return result
 
-        if use_resolver:
-            resolved = resolve_best_product_url(url)
+        if use_resolver and page_type in ("article", "unknown", "category"):
+            resolved = resolve_best_product_url(
+                url,
+                start_html=response.text,
+                start_page_type=page_type,
+            )
             if resolved.get("resolved_url") and resolved["resolved_url"] != url:
                 resolved_url = resolved["resolved_url"]
-                logger.info(f"[DISCOVERY] Resolved {url} => {resolved_url}")
+                logger.info(f"[DISCOVERY] Resolved {url} (type={page_type}) => {resolved_url}")
                 result = extract_product_data(resolved_url)
                 if result:
                     result["url"] = resolved_url
                     result["_whey_validated"] = True
                     result["_resolved_from"] = url
+                    result["_resolved_from_type"] = page_type
                     result["_whey_signals"] = []
+                    result["_page_type"] = "product"
                 return result
 
-        logger.debug(f"[DISCOVERY] Skipped non-whey URL: {url} ({whey_info.get('rejection_reason', '')})")
+        rejection = whey_info.get("rejection_reason", "")
+        logger.info(f"[DISCOVERY] Rejected URL (type={page_type}): {url} => {rejection}")
         return None
 
     except Exception as e:

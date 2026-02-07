@@ -46,6 +46,23 @@ EDITORIAL_H1_PATTERNS = [
     r"\bversus\b", r"\bvs\b",
 ]
 
+ARTICLE_URL_PATTERNS = [
+    "/blog/", "/guide/", "/types-de/", "/conseils/",
+    "/bienfaits/", "/utilisation/", "/tout-savoir/",
+    "/comment-", "/pourquoi-", "/difference-entre",
+    "/dossier/", "/article/", "/articles/",
+    "/magazine/", "/editorial/", "/wiki/",
+]
+
+ARTICLE_H1_KEYWORDS = [
+    "bienfaits", "utilisation", "guide", "comment",
+    "tout savoir", "conseils", "avantages",
+    "comparatif", "difference entre", "différence entre",
+    "pourquoi", "choisir", "quel", "quelle",
+    "top ", "meilleur", "classement", "selection",
+    "sélection", "avis", "test",
+]
+
 
 def is_bad_url(url: str) -> tuple[bool, str]:
     parsed = urlparse(url)
@@ -162,6 +179,7 @@ _ADD_TO_CART_PATTERNS = [
     re.compile(r"acheter", re.I),
     re.compile(r"commander", re.I),
     re.compile(r"ajouter\s+au\s+sac", re.I),
+    re.compile(r"buy\s+now", re.I),
 ]
 
 _ADD_TO_CART_CLASSES = re.compile(
@@ -257,50 +275,108 @@ def has_weight_signals(text: str) -> tuple[bool, list[str]]:
     return bool(signals), signals
 
 
-def _is_editorial_page(soup: BeautifulSoup, has_jsonld_offer: bool) -> tuple[bool, str]:
+def has_purchase_proof(soup: BeautifulSoup) -> tuple[bool, list[str]]:
+    proofs = []
+
+    jsonld_info = extract_jsonld_product_offer(soup)
+    if jsonld_info["has_product"] and jsonld_info["has_offer"] and (jsonld_info["has_price"] or jsonld_info["has_availability"]):
+        proofs.append("jsonld_product_offer_price")
+
+    for tag in soup.find_all("meta"):
+        prop = (tag.get("property", "") or tag.get("name", "")).lower()
+        content = tag.get("content", "")
+        if prop in ("product:price:amount", "og:price:amount") and content:
+            try:
+                val = float(content.replace(",", ".").replace(" ", ""))
+                if val > 0:
+                    proofs.append(f"meta_price:{prop}={content}")
+            except (ValueError, TypeError):
+                pass
+
+    cart_found, cart_signals = has_add_to_cart_signals(soup)
+    price_found, price_signals = has_price_signals(soup)
+
+    if cart_found and price_found:
+        proofs.append(f"cart_and_price:{','.join(cart_signals)}|{','.join(price_signals)}")
+
+    return bool(proofs), proofs
+
+
+def is_article_page(url: str, soup: BeautifulSoup) -> tuple[bool, list[str]]:
+    reasons = []
+    url_lower = url.lower()
+    parsed = urlparse(url_lower)
+    path = parsed.path
+
+    for pattern in ARTICLE_URL_PATTERNS:
+        if pattern in path:
+            reasons.append(f"url_pattern:{pattern}")
+            break
+
     h1 = soup.find("h1")
-    if h1:
-        h1_text = h1.get_text(strip=True).lower()
-        for pattern in EDITORIAL_H1_PATTERNS:
-            if re.search(pattern, h1_text):
-                if not has_jsonld_offer:
-                    return True, f"editorial_h1:{h1_text[:60]}"
+    h1_text = h1.get_text(strip=True).lower() if h1 else ""
+    for kw in ARTICLE_H1_KEYWORDS:
+        if kw in h1_text:
+            reasons.append(f"h1_article_kw:{kw}")
+            break
 
     title_tag = soup.find("title")
-    if title_tag:
-        title_text = title_tag.get_text(strip=True).lower()
-        for pattern in EDITORIAL_H1_PATTERNS:
-            if re.search(pattern, title_text):
-                if not has_jsonld_offer:
-                    return True, f"editorial_title:{title_text[:60]}"
+    title_text = title_tag.get_text(strip=True).lower() if title_tag else ""
+    for kw in ARTICLE_H1_KEYWORDS:
+        if kw in title_text:
+            if f"h1_article_kw:{kw}" not in reasons:
+                reasons.append(f"title_article_kw:{kw}")
+            break
 
-    return False, ""
-
-
-def _is_content_heavy_page(soup: BeautifulSoup, has_cart: bool, has_jsonld_offer: bool) -> tuple[bool, str]:
     body = soup.find("body")
-    if not body:
-        return False, ""
+    if body:
+        text = body.get_text(" ", strip=True)
+        word_count = len(text.split())
+        has_proof, _ = has_purchase_proof(soup)
+        if word_count > 1200 and not has_proof:
+            reasons.append(f"content_heavy:word_count={word_count}")
 
-    text = body.get_text(" ", strip=True)
-    word_count = len(text.split())
+    return bool(reasons), reasons
 
-    if word_count > 1200 and not has_cart and not has_jsonld_offer:
-        return True, f"content_heavy:word_count={word_count}"
 
-    return False, ""
+def _classify_page_type(url: str, soup: BeautifulSoup) -> str:
+    url_lower = url.lower()
+    path = urlparse(url_lower).path
+
+    has_proof, _ = has_purchase_proof(soup)
+    article, _ = is_article_page(url, soup)
+
+    if has_proof and not article:
+        return "product"
+
+    if article and not has_proof:
+        return "article"
+
+    category_patterns = ["/collections", "/category", "/categories", "/categorie/", "/c/"]
+    for pat in category_patterns:
+        if pat in path:
+            return "category"
+
+    if has_proof and article:
+        return "product"
+
+    return "unknown"
 
 
 def is_product_page(url: str, html) -> tuple[bool, dict]:
     reasons = {
         "accepted": False,
         "rejection_reason": "",
+        "page_type": "unknown",
+        "purchase_proof": [],
+        "article_signals": [],
         "signals": {},
     }
 
     bad, bad_reason = is_bad_url(url)
     if bad:
         reasons["rejection_reason"] = bad_reason
+        reasons["page_type"] = "blocked"
         logger.info(f"[PAGE_VALIDATOR] REJECTED (bad_url) {url} => {bad_reason}")
         return False, reasons
 
@@ -319,51 +395,48 @@ def is_product_page(url: str, html) -> tuple[bool, dict]:
     weight_found, weight_signals = has_weight_signals(page_text)
     reasons["signals"]["weight"] = weight_signals
 
-    has_jsonld_offer = jsonld_info["has_product"] and jsonld_info["has_offer"]
-    has_jsonld_price = jsonld_info["has_price"]
+    has_proof, proof_details = has_purchase_proof(soup)
+    reasons["purchase_proof"] = proof_details
 
-    is_editorial, editorial_reason = _is_editorial_page(soup, has_jsonld_offer)
-    if is_editorial:
-        reasons["rejection_reason"] = editorial_reason
-        logger.info(f"[PAGE_VALIDATOR] REJECTED (editorial) {url} => {editorial_reason}")
+    article_detected, article_reasons = is_article_page(url, soup)
+    reasons["article_signals"] = article_reasons
+
+    page_type = _classify_page_type(url, soup)
+    reasons["page_type"] = page_type
+
+    if article_detected and not has_proof:
+        reasons["rejection_reason"] = f"article_page:{','.join(article_reasons)}"
+        reasons["page_type"] = "article"
+        logger.info(f"[PAGE_VALIDATOR] REJECTED (article) {url} => {reasons['rejection_reason']}")
         return False, reasons
 
-    content_heavy, content_reason = _is_content_heavy_page(soup, cart_found, has_jsonld_offer)
-    if content_heavy:
-        reasons["rejection_reason"] = content_reason
-        logger.info(f"[PAGE_VALIDATOR] REJECTED (content_heavy) {url} => {content_reason}")
+    if not has_proof:
+        parts = []
+        if not jsonld_info.get("has_offer"):
+            parts.append("no_jsonld_offer")
+        if not cart_found:
+            parts.append("no_cart")
+        if not price_found:
+            parts.append("no_price")
+        reasons["rejection_reason"] = f"no_purchase_proof:{','.join(parts)}"
+        reasons["page_type"] = page_type if page_type != "unknown" else "unknown"
+        logger.info(f"[PAGE_VALIDATOR] REJECTED (no_purchase_proof) {url} => {reasons['rejection_reason']}")
         return False, reasons
 
-    if has_jsonld_offer and (has_jsonld_price or jsonld_info["has_availability"]):
-        reasons["accepted"] = True
+    reasons["accepted"] = True
+    reasons["page_type"] = "product"
+
+    if jsonld_info["has_product"] and jsonld_info["has_offer"] and (jsonld_info["has_price"] or jsonld_info["has_availability"]):
         reasons["acceptance_path"] = "jsonld_product_offer"
-        logger.debug(f"[PAGE_VALIDATOR] ACCEPTED (jsonld) {url}")
-        return True, reasons
-
-    if cart_found and price_found and weight_found:
-        reasons["accepted"] = True
+    elif cart_found and price_found and weight_found:
         reasons["acceptance_path"] = "cart+price+weight"
-        logger.debug(f"[PAGE_VALIDATOR] ACCEPTED (signals) {url}")
-        return True, reasons
-
-    if cart_found and price_found:
-        reasons["accepted"] = True
+    elif cart_found and price_found:
         reasons["acceptance_path"] = "cart+price"
-        logger.debug(f"[PAGE_VALIDATOR] ACCEPTED (cart+price, no weight) {url}")
-        return True, reasons
+    else:
+        reasons["acceptance_path"] = "meta_price"
 
-    parts = []
-    if not has_jsonld_offer:
-        parts.append("no_jsonld_offer")
-    if not cart_found:
-        parts.append("no_cart")
-    if not price_found:
-        parts.append("no_price")
-    if not weight_found:
-        parts.append("no_weight")
-    reasons["rejection_reason"] = "insufficient_signals:" + ",".join(parts)
-    logger.info(f"[PAGE_VALIDATOR] REJECTED (insufficient) {url} => {reasons['rejection_reason']}")
-    return False, reasons
+    logger.debug(f"[PAGE_VALIDATOR] ACCEPTED ({reasons['acceptance_path']}) {url}")
+    return True, reasons
 
 
 WHEY_KEYWORDS = [
@@ -474,9 +547,12 @@ def is_whey_product_page(html, url: str) -> tuple[bool, dict]:
     result = {
         "is_product": False,
         "is_whey": False,
+        "page_type": "unknown",
         "whey_signal_count": 0,
         "whey_signals": [],
         "non_whey_signals": [],
+        "purchase_proof": [],
+        "article_signals": [],
         "product_reasons": {},
         "rejection_reason": "",
     }
@@ -486,10 +562,13 @@ def is_whey_product_page(html, url: str) -> tuple[bool, dict]:
     is_prod, prod_reasons = is_product_page(url, soup)
     result["is_product"] = is_prod
     result["product_reasons"] = prod_reasons
+    result["page_type"] = prod_reasons.get("page_type", "unknown")
+    result["purchase_proof"] = prod_reasons.get("purchase_proof", [])
+    result["article_signals"] = prod_reasons.get("article_signals", [])
 
     if not is_prod:
         result["rejection_reason"] = f"not_product_page:{prod_reasons.get('rejection_reason', '')}"
-        logger.info(f"[WHEY_VALIDATOR] REJECTED (not product) {url}")
+        logger.info(f"[WHEY_VALIDATOR] REJECTED (not product, type={result['page_type']}) {url}")
         return False, result
 
     is_non_whey, non_whey_signals = _has_non_whey_signals(url, soup, soup)
@@ -505,6 +584,7 @@ def is_whey_product_page(html, url: str) -> tuple[bool, dict]:
 
     if count >= 2:
         result["is_whey"] = True
+        result["page_type"] = "product"
         logger.debug(f"[WHEY_VALIDATOR] ACCEPTED {url} ({count} whey signals: {whey_signals})")
         return True, result
 
@@ -519,10 +599,15 @@ def validate_url_debug(url: str) -> dict:
     result = {
         "url": url,
         "status": "unknown",
+        "page_type": "unknown",
         "is_bad_url": False,
         "bad_url_reason": "",
         "http_status": None,
         "is_product_page": False,
+        "has_purchase_proof": False,
+        "purchase_proof": [],
+        "is_article": False,
+        "article_signals": [],
         "reasons": {},
         "error": None,
     }
@@ -533,6 +618,7 @@ def validate_url_debug(url: str) -> dict:
 
     if bad:
         result["status"] = "rejected_url"
+        result["page_type"] = "blocked"
         return result
 
     headers = {
@@ -550,9 +636,20 @@ def validate_url_debug(url: str) -> dict:
                 result["status"] = f"http_error:{response.status_code}"
                 return result
 
-            is_product, reasons = is_product_page(url, response.text)
+            soup = BeautifulSoup(response.text, "lxml")
+
+            has_proof, proof_details = has_purchase_proof(soup)
+            result["has_purchase_proof"] = has_proof
+            result["purchase_proof"] = proof_details
+
+            article_detected, article_reasons = is_article_page(url, soup)
+            result["is_article"] = article_detected
+            result["article_signals"] = article_reasons
+
+            is_product, reasons = is_product_page(url, soup)
             result["is_product_page"] = is_product
             result["reasons"] = reasons
+            result["page_type"] = reasons.get("page_type", "unknown")
             result["status"] = "accepted" if is_product else "rejected"
 
     except Exception as e:

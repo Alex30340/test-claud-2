@@ -5,7 +5,7 @@ from urllib.parse import urlparse, urljoin
 import httpx
 from bs4 import BeautifulSoup
 
-from page_validator import is_whey_product_page, is_bad_url
+from page_validator import is_whey_product_page, is_bad_url, has_purchase_proof, is_article_page
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +67,9 @@ POSITIVE_ANCHOR_PATTERNS = {
     "native": 3,
     "protéine": 4,
     "proteine": 4,
+    "ajouter au panier": 6,
+    "acheter": 4,
+    "commander": 4,
 }
 
 HEADERS = {
@@ -109,7 +112,7 @@ def _fetch_page(url: str) -> tuple[str | None, int | None]:
         return None, None
 
 
-def _extract_internal_links(html: str, base_url: str) -> list[dict]:
+def _extract_internal_links(html: str, base_url: str, prefer_product_paths: bool = False) -> list[dict]:
     soup = BeautifulSoup(html, "lxml")
     parsed_base = urlparse(base_url)
     base_domain = parsed_base.netloc.lower().replace("www.", "")
@@ -153,12 +156,15 @@ def _extract_internal_links(html: str, base_url: str) -> list[dict]:
 def resolve_best_product_url(
     start_url: str,
     target_keywords: list[str] | None = None,
+    start_html: str | None = None,
+    start_page_type: str | None = None,
 ) -> dict:
     if target_keywords is None:
         target_keywords = ["whey", "isolate", "native"]
 
     result = {
         "start_url": start_url,
+        "start_page_type": start_page_type or "unknown",
         "is_start_whey_product": False,
         "resolved_url": None,
         "resolution_method": None,
@@ -167,26 +173,35 @@ def resolve_best_product_url(
         "reasons": [],
     }
 
-    html, http_status = _fetch_page(start_url)
+    html = start_html
     if html is None:
-        result["reasons"].append(f"fetch_failed:http_status={http_status}")
-        logger.info(f"[RESOLVER] Cannot fetch start URL: {start_url} (status={http_status})")
-        return result
+        html, http_status = _fetch_page(start_url)
+        if html is None:
+            result["reasons"].append(f"fetch_failed:http_status={http_status}")
+            logger.info(f"[RESOLVER] Cannot fetch start URL: {start_url} (status={http_status})")
+            return result
 
     is_whey, whey_result = is_whey_product_page(html, start_url)
     if is_whey:
         result["is_start_whey_product"] = True
         result["resolved_url"] = start_url
         result["resolution_method"] = "start_url_is_whey"
+        result["start_page_type"] = "product"
         result["reasons"].append(f"start_url already whey product ({whey_result['whey_signal_count']} signals)")
         logger.debug(f"[RESOLVER] Start URL is already whey product: {start_url}")
         return result
 
+    detected_page_type = whey_result.get("page_type", "unknown")
+    result["start_page_type"] = detected_page_type
     result["reasons"].append(
-        f"start_url not whey: {whey_result.get('rejection_reason', 'unknown')}"
+        f"start_url not whey (type={detected_page_type}): {whey_result.get('rejection_reason', 'unknown')}"
     )
 
-    internal_links = _extract_internal_links(html, start_url)
+    is_article = detected_page_type == "article"
+    if is_article:
+        result["reasons"].append("start_url is article page, searching for product links on same domain")
+
+    internal_links = _extract_internal_links(html, start_url, prefer_product_paths=is_article)
     result["reasons"].append(f"found {len(internal_links)} internal links")
 
     scored_links = []
@@ -217,16 +232,17 @@ def resolve_best_product_url(
         c_is_whey, c_whey_result = is_whey_product_page(c_html, candidate["url"])
         candidate["is_whey_product"] = c_is_whey
         candidate["whey_signals"] = c_whey_result.get("whey_signals", [])
+        candidate["page_type"] = c_whey_result.get("page_type", "unknown")
 
         if c_is_whey:
             result["resolved_url"] = candidate["url"]
-            result["resolution_method"] = "crawl_resolved"
+            result["resolution_method"] = "article_to_product" if is_article else "crawl_resolved"
             result["candidates_tested"] = tested
             result["reasons"].append(
                 f"resolved via crawl: {candidate['url']} "
                 f"(score={candidate['score']}, {c_whey_result['whey_signal_count']} whey signals)"
             )
-            logger.info(f"[RESOLVER] Resolved {start_url} => {candidate['url']}")
+            logger.info(f"[RESOLVER] Resolved {start_url} => {candidate['url']} (from {'article' if is_article else 'non-product'})")
             return result
 
         candidate["test_result"] = c_whey_result.get("rejection_reason", "not_whey")
