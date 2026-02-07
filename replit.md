@@ -84,13 +84,20 @@ Commence a 10, puis malus :
 
 ### Data Extraction Strategy
 Multi-couche pour maximiser la couverture :
-1. JSON-LD (schema.org Product)
+1. JSON-LD (schema.org Product) - highest priority for price and product data
 2. Open Graph meta tags (og:title, product:price:amount)
 3. Schema.org microdata (itemprop attributes)
-4. HTML regex fallbacks (price classes, text patterns)
+4. HTML CSS class fallbacks (current-price, sale-price, product-price) with old-price exclusion
 5. Bloc ingredients pour detection edulcorants et additifs
 6. Extraction amino acids (leucine, isoleucine, valine, BCAA) depuis texte page
-Sites exclus : Amazon (503), Decathlon (403), reseaux sociaux
+
+### Product Page Validation
+- Pages without JSON-LD Product are validated via is_product_page() which checks: add-to-cart buttons, og:type product, price+product CSS classes, product URL path signals
+- Non-whey products are filtered out by checking whey keywords in title/URL/H1
+- Editorial/comparison pages detected via NON_PRODUCT_TITLE_KEYWORDS in page title
+- Price validation: range 8-200 EUR, old/crossed-out prices excluded, price_per_kg >200 EUR/kg flagged as suspicious
+
+Sites exclus : Amazon (503), Decathlon (403), reseaux sociaux, sites media/sante (doctissimo, passeportsante, etc.)
 
 ### Performance
 - Extraction parallele via ThreadPoolExecutor (8 workers simultanes)
