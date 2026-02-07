@@ -1285,9 +1285,10 @@ def page_catalogue():
         "Confiance minimum des offres",
         min_value=0.0,
         max_value=1.0,
-        value=0.3,
+        value=0.75,
         step=0.05,
         key="cat_confidence_slider",
+        help="Les produits avec confidence < 0.75 sont masques par defaut (ex: pages JS sans prix).",
     )
 
     products = get_all_products(min_confidence=min_confidence, limit=200)

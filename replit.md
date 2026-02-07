@@ -9,8 +9,11 @@ Application SaaS Python/Streamlit pour comparer les proteines whey en France. Mo
 - `app.py` - Interface Streamlit SaaS (auth, dashboard, catalogue, scan, admin, cartes produit V2)
 - `db.py` - Couche base de donnees PostgreSQL (users, scans, scan_items, products, offers, pipeline_runs)
 - `auth.py` - Hashage et verification de mots de passe (bcrypt)
+- `extractor.py` - Extraction prix 4 niveaux (JSON-LD, OpenGraph, Next/Nuxt, regex), currency, poids, detection needs_js_render
+- `validator.py` - Validation prix/poids, compute_confidence_v2 avec support needs_js_render
 - `scraper.py` - Recherche Brave Search API + extraction multi-couche + pipelines Discovery/Refresh + confidence scoring
 - `scoring.py` - Calcul des notes proteique /10, sante /10, et globale (60/40)
+- `test_extractor.py` - Tests unitaires extracteur (15 cas : JSON-LD, OG, Next.js, regex, needs_js_render, crossed prices)
 - `main.py` - Script CLI (usage autonome)
 - `.streamlit/config.toml` - Configuration Streamlit (port 5000)
 
@@ -19,7 +22,7 @@ Application SaaS Python/Streamlit pour comparer les proteines whey en France. Mo
 - `scans` - Historique des scans par utilisateur (legacy, toujours fonctionnel)
 - `scan_items` - Produits extraits rattaches a un scan (legacy)
 - `products` - Catalogue stable (name, brand, type_whey, nutrition, ingredients, scores, origin, normalized_key pour dedup)
-- `offers` - Offres marchands volatiles (product_id FK, merchant, url, prix, poids_kg, prix_par_kg, confidence, fail_count, is_active, discovery_source)
+- `offers` - Offres marchands volatiles (product_id FK, merchant, url, prix, poids_kg, prix_par_kg, confidence, fail_count, is_active, discovery_source, needs_js_render, price_source)
 - `pipeline_runs` - Historique des executions Discovery/Refresh (run_type, status, counts, timestamps)
 
 ### Product/Offer Architecture
@@ -129,11 +132,23 @@ Commence a 10, puis malus :
 ### Data Extraction Strategy
 Multi-couche pour maximiser la couverture :
 1. JSON-LD (schema.org Product) - highest priority for price and product data
-2. Open Graph meta tags (og:title, product:price:amount)
-3. Schema.org microdata (itemprop attributes)
-4. HTML CSS class fallbacks (current-price, sale-price, product-price) with old-price exclusion
+   - offers.price, offers.priceSpecification.price, offers.lowPrice
+2. Open Graph meta tags (product:price:amount, og:price:amount, twitter:data1)
+3. Scripts JSON (Next.js __NEXT_DATA__, Nuxt __NUXT__, window.__INITIAL_STATE__)
+   - Walk JSON recursively pour trouver "price"
+4. Regex fallback sur HTML :
+   - Classes CSS prioritaires (current-price, sale-price, product-price)
+   - Proximite panier ("ajouter au panier") avec pattern prix "xx,xx €"
+   - Exclusion prix barres (<del>, <s>, class old/was/crossed/barre)
+   - Exclusion contextes parasites (abonnement, livraison, a partir de)
 5. Bloc ingredients pour detection edulcorants et additifs
 6. Extraction amino acids (leucine, isoleucine, valine, BCAA) depuis texte page
+
+### JavaScript Render Detection
+- Si aucun prix detecte MAIS presence Next.js/Nuxt/React OU boutons panier => needs_js_render=True
+- needs_js_render stocke dans offers
+- Si needs_js_render=True et pas de prix => confidence plafonnee a 0.3
+- Catalogue filtre par defaut a confidence >= 0.75 (exclut pages JS sans prix)
 
 ### Product Page Validation
 - Pages without JSON-LD Product are validated via is_product_page() which checks: add-to-cart buttons, og:type product, price+product CSS classes, product URL path signals

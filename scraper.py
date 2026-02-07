@@ -15,6 +15,8 @@ from scoring import (
     calculate_health_score,
     calculate_global_score,
 )
+from extractor import extract_price, extract_currency, extract_weight_kg, detect_needs_js_render
+from validator import validate_price, validate_weight, validate_price_per_kg, compute_confidence_v2
 
 logger = logging.getLogger(__name__)
 
@@ -920,13 +922,16 @@ def extract_product_data(url: str) -> dict | None:
         if not brand:
             brand = extract_brand_from_text(name, url)
         if not currency or currency == "EUR":
-            currency = og.get("product:price:currency", "EUR") or microdata.get("pricecurrency", "EUR")
+            currency = extract_currency(soup)
         if not availability:
             availability = og.get("product:availability", "") or microdata.get("availability", "")
             if availability:
                 availability = availability.split("/")[-1]
 
-        price = extract_best_price(soup, jsonld, og, microdata)
+        price, price_source = extract_price(soup)
+        price = validate_price(price)
+
+        needs_js = detect_needs_js_render(soup, has_price=(price is not None))
 
         bad_titles = ["amazon.fr", "amazon", "decathlon", "cdiscount", "google"]
         if name and name.strip().lower() in bad_titles:
@@ -947,14 +952,10 @@ def extract_product_data(url: str) -> dict | None:
                 logger.info(f"Skipping non-whey product: {name} ({url})")
                 return None
 
-        weight = extract_weight_comprehensive(soup, name, jsonld)
+        weight = extract_weight_kg(soup, name, jsonld)
+        weight = validate_weight(weight)
 
-        price_per_kg = None
-        if price and weight and weight > 0:
-            price_per_kg = round(price / weight, 2)
-            if price_per_kg > 200:
-                logger.info(f"Price per kg suspicious ({price_per_kg} EUR/kg) for {url}, keeping raw price")
-                price_per_kg = None
+        price_per_kg = validate_price_per_kg(price, weight)
 
         protein_per_100g = None
         if jsonld:
@@ -1046,6 +1047,8 @@ def extract_product_data(url: str) -> dict | None:
             "score_global": global_score,
             "date_recuperation": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "_has_jsonld": jsonld is not None,
+            "_price_source": price_source,
+            "_needs_js_render": needs_js,
         }
 
     except Exception as e:
@@ -1142,6 +1145,8 @@ def split_product_offer(raw: dict) -> tuple[dict, dict]:
         "prix_par_kg": raw.get("prix_par_kg"),
         "disponibilite": raw.get("disponibilite", ""),
         "confidence": raw.get("confidence", 0.5),
+        "needs_js_render": raw.get("_needs_js_render", False),
+        "price_source": raw.get("_price_source", "none"),
     }
 
     return product_data, offer_data
@@ -1291,7 +1296,12 @@ def run_discovery(api_key: str, progress_callback=None, status_callback=None,
                     continue
 
                 try:
-                    confidence = compute_confidence(result, has_jsonld=bool(result.get("_has_jsonld", False)))
+                    needs_js = result.get("_needs_js_render", False)
+                    confidence = compute_confidence_v2(
+                        result,
+                        has_jsonld=bool(result.get("_has_jsonld", False)),
+                        needs_js_render=needs_js,
+                    )
                     result["confidence"] = confidence
 
                     if confidence < 0.2:
@@ -1299,7 +1309,7 @@ def run_discovery(api_key: str, progress_callback=None, status_callback=None,
                         continue
 
                     product_data, offer_data = split_product_offer(result)
-                    product_data["needs_review"] = confidence < 0.5
+                    product_data["needs_review"] = confidence < 0.5 or needs_js
                     offer_data["discovery_source"] = source
 
                     product_id = upsert_product(product_data)
@@ -1410,17 +1420,15 @@ def refresh_offer_price(url: str) -> dict | None:
 
         soup = BeautifulSoup(response.text, "lxml")
         jsonld = extract_jsonld(soup)
-        og = extract_og_meta(soup)
-        microdata = extract_microdata(soup)
 
-        price = extract_best_price(soup, jsonld, og, microdata)
-        weight = extract_weight_comprehensive(soup, "", jsonld)
+        price, price_source = extract_price(soup)
+        price = validate_price(price)
+        weight = extract_weight_kg(soup, "", jsonld)
+        weight = validate_weight(weight)
 
-        price_per_kg = None
-        if price and weight and weight > 0:
-            price_per_kg = round(price / weight, 2)
-            if price_per_kg > 200:
-                price_per_kg = None
+        price_per_kg = validate_price_per_kg(price, weight)
+
+        needs_js = detect_needs_js_render(soup, has_price=(price is not None))
 
         availability = ""
         if jsonld:
@@ -1432,13 +1440,22 @@ def refresh_offer_price(url: str) -> dict | None:
                 availability = availability.split("/")[-1]
 
         has_jsonld = jsonld is not None
-        confidence = 0.9 if has_jsonld and price else (0.6 if price else 0.3)
+        refresh_data = {
+            "nom": "refresh",
+            "prix": price,
+            "poids_kg": weight,
+            "prix_par_kg": price_per_kg,
+            "proteines_100g": None,
+        }
+        confidence = compute_confidence_v2(refresh_data, has_jsonld=has_jsonld, needs_js_render=needs_js)
 
         return {
             "prix": price,
             "prix_par_kg": price_per_kg,
             "disponibilite": availability,
             "confidence": confidence,
+            "needs_js_render": needs_js,
+            "price_source": price_source,
         }
 
     except Exception as e:

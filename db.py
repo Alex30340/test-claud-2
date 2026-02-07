@@ -155,6 +155,8 @@ def init_db():
 
     offer_columns = [
         ("discovery_source", "VARCHAR(200)"),
+        ("needs_js_render", "BOOLEAN DEFAULT FALSE"),
+        ("price_source", "VARCHAR(100)"),
     ]
     for col_name, col_type in offer_columns:
         try:
@@ -451,6 +453,8 @@ def upsert_offer(product_id: int, offer_data: dict) -> int:
         disponibilite = offer_data.get("disponibilite")
         confidence = offer_data.get("confidence", 0.5)
         discovery_source = offer_data.get("discovery_source")
+        needs_js_render = offer_data.get("needs_js_render", False)
+        price_source = offer_data.get("price_source")
 
         if existing:
             cur.execute(
@@ -458,20 +462,21 @@ def upsert_offer(product_id: int, offer_data: dict) -> int:
                    SET merchant = %s, prix = %s, devise = %s, poids_kg = %s,
                        prix_par_kg = %s, disponibilite = %s, confidence = %s,
                        discovery_source = COALESCE(%s, discovery_source),
+                       needs_js_render = %s, price_source = %s,
                        is_active = TRUE, fail_count = 0, last_seen = NOW(), updated_at = NOW()
                    WHERE id = %s RETURNING id""",
                 (merchant, prix, devise, poids_kg, prix_par_kg, disponibilite, confidence,
-                 discovery_source, existing["id"]),
+                 discovery_source, needs_js_render, price_source, existing["id"]),
             )
             offer_id = cur.fetchone()["id"]
         else:
             cur.execute(
                 """INSERT INTO offers
                    (product_id, merchant, url, prix, devise, poids_kg, prix_par_kg,
-                    disponibilite, confidence, discovery_source)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                    disponibilite, confidence, discovery_source, needs_js_render, price_source)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
                 (product_id, merchant, url, prix, devise, poids_kg, prix_par_kg,
-                 disponibilite, confidence, discovery_source),
+                 disponibilite, confidence, discovery_source, needs_js_render, price_source),
             )
             offer_id = cur.fetchone()["id"]
 
