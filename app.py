@@ -16,7 +16,8 @@ from db import (
     get_all_products, get_catalog_stats, get_pipeline_runs,
 )
 from auth import hash_password, verify_password
-from page_validator import validate_url_debug
+from page_validator import validate_url_debug, is_whey_product_page
+from resolver import resolve_url_debug
 
 init_db()
 
@@ -1464,6 +1465,8 @@ def page_admin():
                     value=", ".join(BLOCK_DOMAINS),
                     key="disc_block"
                 )
+                disc_whey_filter = st.checkbox("Filtre whey strict (2+ signaux)", value=True, key="disc_whey_filter")
+                disc_use_resolver = st.checkbox("Resolveur d'URL (crawl 1 niveau)", value=True, key="disc_resolver")
 
             if st.button("🚀 Lancer un Discovery", type="primary", use_container_width=True, key="btn_discovery"):
                 status_container = st.empty()
@@ -1490,6 +1493,8 @@ def page_admin():
                             use_brand_seeds=disc_use_seeds,
                             block_domains=block_list,
                             scrape_limit=disc_scrape_limit,
+                            use_whey_filter=disc_whey_filter,
+                            use_resolver=disc_use_resolver,
                         )
                     progress_bar.empty()
                     detail_text.empty()
@@ -1502,6 +1507,10 @@ def page_admin():
                         f"Domaines: {len(domains_found)}, "
                         f"Erreurs: {result.get('errors', 0)}"
                     )
+                    if result.get("whey_rejected"):
+                        msg += f"\nNon-whey rejetes: {result['whey_rejected']}"
+                    if result.get("resolved"):
+                        msg += f"\nURLs resolues: {result['resolved']}"
                     if brands_missing:
                         msg += f"\nMarques manquantes: {', '.join(sorted(brands_missing)[:10])}"
                     status_container.success(f"✅ Discovery termine !\n{msg}")
@@ -1682,6 +1691,63 @@ def page_admin():
                         st.warning(f"{label} : aucun signal detecte")
 
                 st.json(debug_result)
+
+    st.divider()
+    st.subheader("🔗 Debug : Resolveur d'URL whey")
+    st.markdown("Testez la resolution de liens : si l'URL n'est pas une page produit whey, le resolveur cherche le meilleur lien produit sur la page.")
+
+    resolver_url = st.text_input("URL a resoudre", placeholder="https://example.fr/marque/whey", key="resolver_url")
+
+    if st.button("Resoudre cette URL", key="btn_debug_resolve"):
+        if not resolver_url or not resolver_url.startswith("http"):
+            st.warning("Entrez une URL valide (commencant par http).")
+        else:
+            with st.spinner("Resolution en cours (peut prendre 30s)..."):
+                resolve_result = resolve_url_debug(resolver_url)
+
+            if resolve_result.get("resolved_url"):
+                if resolve_result.get("is_start_whey_product"):
+                    st.success(f"L'URL est deja une page produit whey valide.")
+                else:
+                    st.success(f"Produit whey trouve : {resolve_result['resolved_url']}")
+                    st.info(f"Methode : {resolve_result.get('resolution_method', '?')}")
+            else:
+                st.error("Aucun produit whey trouve via cette URL.")
+
+            with st.expander("Etapes de resolution", expanded=True):
+                for reason in resolve_result.get("reasons", []):
+                    st.text(f"- {reason}")
+
+            whey_detail = resolve_result.get("start_whey_detail")
+            if whey_detail:
+                with st.expander("Signaux whey de la page initiale"):
+                    cols = st.columns(3)
+                    cols[0].metric("Page produit", "Oui" if whey_detail.get("is_product") else "Non")
+                    cols[1].metric("Est whey", "Oui" if whey_detail.get("is_whey") else "Non")
+                    cols[2].metric("Signaux whey", str(whey_detail.get("whey_signal_count", 0)))
+                    if whey_detail.get("whey_signals"):
+                        st.write("Signaux detectes :")
+                        for sig in whey_detail["whey_signals"]:
+                            st.text(f"  - {sig}")
+                    if whey_detail.get("non_whey_signals"):
+                        st.warning(f"Signaux non-whey : {', '.join(whey_detail['non_whey_signals'])}")
+
+            candidates = resolve_result.get("candidates_top10", [])
+            if candidates:
+                with st.expander(f"Top {len(candidates)} candidats testes"):
+                    for i, c in enumerate(candidates):
+                        is_whey = c.get("is_whey_product", False)
+                        icon = "✅" if is_whey else "❌"
+                        st.text(f"{icon} [{c.get('score', 0):+d}] {c['url'][:80]}")
+                        if c.get("anchor"):
+                            st.text(f"   Texte lien : {c['anchor'][:60]}")
+                        if c.get("whey_signals"):
+                            st.text(f"   Signaux : {', '.join(c['whey_signals'])}")
+                        if c.get("test_result"):
+                            st.text(f"   Resultat : {c['test_result']}")
+
+            with st.expander("JSON complet"):
+                st.json(resolve_result)
 
 
 # ── ROUTER ──

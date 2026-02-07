@@ -487,13 +487,114 @@ def extract_microdata(soup: BeautifulSoup) -> dict:
     return data
 
 
-def find_ingredients_block(text: str) -> str | None:
+_INGREDIENT_HEADING_PATTERNS = [
+    re.compile(r"ingr[ée]dients?", re.I),
+    re.compile(r"composition", re.I),
+    re.compile(r"liste\s+des\s+ingr[ée]dients?", re.I),
+]
+
+_INGREDIENT_NOISE = re.compile(
+    r"(menu|footer|header|sidebar|nav|cookie|banner|newsletter|panier|cart|checkout)",
+    re.I,
+)
+
+
+def _is_noise_element(el) -> bool:
+    if not el:
+        return False
+    classes = " ".join(el.get("class", []) if hasattr(el, "get") else [])
+    el_id = el.get("id", "") if hasattr(el, "get") else ""
+    return bool(_INGREDIENT_NOISE.search(f"{classes} {el_id}"))
+
+
+def find_ingredients_block_html(soup) -> str | None:
+    for pattern in _INGREDIENT_HEADING_PATTERNS:
+        headings = soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6", "strong", "b", "p", "span", "div"],
+                                  string=pattern)
+        for heading in headings:
+            if _is_noise_element(heading) or _is_noise_element(heading.parent):
+                continue
+
+            sibling_texts = []
+            for sib in heading.find_next_siblings():
+                if sib.name in ("h1", "h2", "h3", "h4", "h5", "h6"):
+                    break
+                if _is_noise_element(sib):
+                    continue
+
+                if sib.name in ("ul", "ol"):
+                    items = [li.get_text(strip=True) for li in sib.find_all("li")]
+                    sibling_texts.append(", ".join(items))
+                elif sib.name == "table":
+                    cells = [td.get_text(strip=True) for td in sib.find_all(["td", "th"])]
+                    sibling_texts.append(", ".join(cells))
+                else:
+                    txt = sib.get_text(" ", strip=True)
+                    if txt:
+                        sibling_texts.append(txt)
+
+                if sum(len(t) for t in sibling_texts) > 800:
+                    break
+
+            if sibling_texts:
+                block = " ".join(sibling_texts)
+                if len(block) >= 20:
+                    return block[:1200]
+
+            parent = heading.parent
+            if parent and parent.name in ("div", "section", "article"):
+                parent_text = parent.get_text(" ", strip=True)
+                heading_text = heading.get_text(strip=True)
+                idx = parent_text.find(heading_text)
+                if idx >= 0:
+                    after = parent_text[idx + len(heading_text):].strip()
+                    if len(after) >= 20:
+                        return after[:1200]
+
+    for el in soup.find_all(["div", "section", "p", "span"],
+                             class_=re.compile(r"ingr[ée]dient|composition|product-ingredients", re.I)):
+        if _is_noise_element(el):
+            continue
+        items = el.find_all("li")
+        if items:
+            block = ", ".join(li.get_text(strip=True) for li in items)
+            if len(block) >= 20:
+                return block[:1200]
+        text = el.get_text(" ", strip=True)
+        if len(text) >= 30:
+            return text[:1200]
+
+    for el in soup.find_all(attrs={"itemprop": re.compile(r"ingredient", re.I)}):
+        text = el.get_text(" ", strip=True)
+        if len(text) >= 20:
+            return text[:1200]
+
+    return None
+
+
+def find_ingredients_block(text: str, soup=None) -> str | None:
+    if soup is not None:
+        html_result = find_ingredients_block_html(soup)
+        if html_result:
+            return html_result
+
     if not text:
         return None
     t = " ".join(text.split())
+
+    patterns = [
+        re.compile(r"(?:liste\s+des\s+)?ingr[ée]dients?\s*[:\-–]\s*(.{30,1200})", re.I),
+        re.compile(r"composition\s*[:\-–]\s*(.{30,1200})", re.I),
+    ]
+    for pat in patterns:
+        m = pat.search(t)
+        if m:
+            return m.group(1)[:1200]
+
     m = re.search(r"(ingr[ée]dients?\s*[:\-]\s*)(.{40,800})", t, re.I)
     if m:
         return m.group(2)[:800]
+
     return None
 
 
@@ -972,7 +1073,7 @@ def extract_product_data(url: str) -> dict | None:
             protein_per_100g = nutrition_data.get("protein")
 
         page_full_text = soup.get_text(" ", strip=True)
-        ingredients_text = find_ingredients_block(page_full_text)
+        ingredients_text = find_ingredients_block(page_full_text, soup=soup)
         analysis_text = ingredients_text or page_full_text
 
         all_text = (name + " " + (jsonld.get("description", "") if jsonld else "") + " " + page_full_text[:3000]).lower()
@@ -1182,6 +1283,51 @@ def _extract_with_log(url: str) -> dict | None:
         return None
 
 
+def _extract_with_whey_validation(url: str, use_resolver: bool = True) -> dict | None:
+    from page_validator import is_whey_product_page as check_whey
+    from resolver import resolve_best_product_url
+
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+        }
+        with httpx.Client(timeout=HTTP_TIMEOUT, follow_redirects=True, verify=False) as client:
+            response = client.get(url, headers=headers)
+            if response.status_code != 200:
+                return None
+
+        is_whey, whey_info = check_whey(response.text, url)
+
+        if is_whey:
+            result = extract_product_data(url)
+            if result:
+                result["_whey_validated"] = True
+                result["_whey_signals"] = whey_info.get("whey_signals", [])
+            return result
+
+        if use_resolver:
+            resolved = resolve_best_product_url(url)
+            if resolved.get("resolved_url") and resolved["resolved_url"] != url:
+                resolved_url = resolved["resolved_url"]
+                logger.info(f"[DISCOVERY] Resolved {url} => {resolved_url}")
+                result = extract_product_data(resolved_url)
+                if result:
+                    result["url"] = resolved_url
+                    result["_whey_validated"] = True
+                    result["_resolved_from"] = url
+                    result["_whey_signals"] = []
+                return result
+
+        logger.debug(f"[DISCOVERY] Skipped non-whey URL: {url} ({whey_info.get('rejection_reason', '')})")
+        return None
+
+    except Exception as e:
+        logger.warning(f"Whey-validated extraction error for {url}: {e}")
+        return None
+
+
 def scrape_products(api_key: str, progress_callback=None, status_callback=None) -> list[dict]:
     if status_callback:
         status_callback("Recherche de produits sur internet...")
@@ -1259,7 +1405,9 @@ def run_discovery(api_key: str, progress_callback=None, status_callback=None,
                   max_per_domain: int = MAX_PER_DOMAIN,
                   use_brand_seeds: bool = True,
                   block_domains: list[str] | None = None,
-                  scrape_limit: int = 200) -> dict:
+                  scrape_limit: int = 200,
+                  use_whey_filter: bool = True,
+                  use_resolver: bool = True) -> dict:
     from db import upsert_product, upsert_offer, create_pipeline_run, update_pipeline_run
 
     run_id = create_pipeline_run("discovery")
@@ -1269,6 +1417,8 @@ def run_discovery(api_key: str, progress_callback=None, status_callback=None,
         "offers_created": 0,
         "errors": 0,
         "skipped": 0,
+        "resolved": 0,
+        "whey_rejected": 0,
         "domains_found": set(),
         "brands_found": set(),
         "brands_missing": set(),
@@ -1305,8 +1455,13 @@ def run_discovery(api_key: str, progress_callback=None, status_callback=None,
         url_source_map = {e["url"]: e["source"] for e in url_entries}
         urls_to_scrape = [e["url"] for e in url_entries]
 
+        if use_whey_filter:
+            extract_fn = lambda url: _extract_with_whey_validation(url, use_resolver=use_resolver)
+        else:
+            extract_fn = _extract_with_log
+
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-            futures = {executor.submit(_extract_with_log, url): url for url in urls_to_scrape}
+            futures = {executor.submit(extract_fn, url): url for url in urls_to_scrape}
 
             for future in as_completed(futures):
                 completed += 1
@@ -1319,8 +1474,14 @@ def run_discovery(api_key: str, progress_callback=None, status_callback=None,
 
                 result = future.result()
                 if result is None:
-                    stats["skipped"] += 1
+                    if use_whey_filter:
+                        stats["whey_rejected"] += 1
+                    else:
+                        stats["skipped"] += 1
                     continue
+
+                if result.get("_resolved_from"):
+                    stats["resolved"] += 1
 
                 try:
                     needs_js = result.get("_needs_js_render", False)
@@ -1364,6 +1525,7 @@ def run_discovery(api_key: str, progress_callback=None, status_callback=None,
 
         details = (
             f"URLs scannees: {total}, Ignores: {stats['skipped']}, "
+            f"Whey rejetes: {stats['whey_rejected']}, Resolus: {stats['resolved']}, "
             f"Domaines uniques: {len(stats['domains_found'])}, "
             f"Marques trouvees: {len(stats['brands_found'])}, "
             f"Marques manquantes: {len(stats['brands_missing'])} ({', '.join(stats['brands_missing'][:10])})"

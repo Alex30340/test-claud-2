@@ -366,6 +366,153 @@ def is_product_page(url: str, html) -> tuple[bool, dict]:
     return False, reasons
 
 
+WHEY_KEYWORDS = [
+    "whey", "protéine whey", "proteine whey", "whey protein",
+    "whey isolate", "whey native", "whey concentr", "whey hydrolys",
+    "isolat de whey", "isolat de lactosérum", "isolat de lactoserum",
+    "lactosérum", "lactoserum",
+    "protéine de lactosérum", "proteine de lactoserum",
+]
+
+NON_WHEY_KEYWORDS = [
+    "endurance", "boisson energetique", "boisson énergétique",
+    "boisson isotonique", "bcaa seul", "creatine", "créatine",
+    "barre protéinée", "barre proteinee", "mass gainer",
+    "pre-workout", "pre workout", "bruleur", "brûleur",
+    "collagene", "collagène", "vitamines", "omega",
+]
+
+
+def _count_whey_signals(url: str, html, soup=None) -> tuple[int, list[str]]:
+    if soup is None:
+        soup = BeautifulSoup(html, "lxml") if isinstance(html, str) else html
+
+    signals = []
+    url_lower = url.lower()
+
+    if any(kw in url_lower for kw in ["whey", "proteine-whey", "protéine-whey"]):
+        signals.append(f"url_contains_whey")
+
+    h1 = soup.find("h1")
+    h1_text = h1.get_text(strip=True).lower() if h1 else ""
+    if any(kw in h1_text for kw in WHEY_KEYWORDS):
+        signals.append(f"h1_whey:{h1_text[:60]}")
+
+    title_tag = soup.find("title")
+    title_text = title_tag.get_text(strip=True).lower() if title_tag else ""
+    if any(kw in title_text for kw in WHEY_KEYWORDS):
+        signals.append(f"title_whey:{title_text[:60]}")
+
+    jsonld_info = extract_jsonld_product_offer(soup)
+    jsonld_name = (jsonld_info.get("product_name") or "").lower()
+    if any(kw in jsonld_name for kw in WHEY_KEYWORDS):
+        signals.append(f"jsonld_name_whey:{jsonld_name[:60]}")
+
+    scripts = soup.find_all("script", type="application/ld+json")
+    for script in scripts:
+        try:
+            data = json.loads(script.string or "")
+            items = data if isinstance(data, list) else [data]
+            for item in items:
+                if isinstance(item, dict) and item.get("@graph"):
+                    items.extend(item["@graph"])
+            for item in items:
+                if isinstance(item, dict):
+                    desc = str(item.get("description", "")).lower()
+                    if any(kw in desc for kw in WHEY_KEYWORDS):
+                        signals.append("jsonld_desc_whey")
+                        break
+        except (json.JSONDecodeError, TypeError):
+            continue
+
+    breadcrumbs = soup.find_all(["nav", "ol", "ul"], class_=re.compile(r"breadcrumb", re.I))
+    for bc in breadcrumbs:
+        bc_text = bc.get_text(" ", strip=True).lower()
+        if any(kw in bc_text for kw in WHEY_KEYWORDS):
+            signals.append(f"breadcrumb_whey:{bc_text[:60]}")
+            break
+
+    for a in soup.find_all("a", attrs={"itemprop": "item"}):
+        a_text = a.get_text(strip=True).lower()
+        if any(kw in a_text for kw in WHEY_KEYWORDS):
+            signals.append(f"breadcrumb_link_whey:{a_text[:40]}")
+            break
+
+    meta_desc = ""
+    for tag in soup.find_all("meta"):
+        prop = (tag.get("property", "") or tag.get("name", "")).lower()
+        if prop in ("description", "og:description"):
+            meta_desc = (tag.get("content", "") or "").lower()
+            break
+    if meta_desc and any(kw in meta_desc for kw in WHEY_KEYWORDS):
+        signals.append("meta_desc_whey")
+
+    return len(signals), signals
+
+
+def _has_non_whey_signals(url: str, html, soup=None) -> tuple[bool, list[str]]:
+    if soup is None:
+        soup = BeautifulSoup(html, "lxml") if isinstance(html, str) else html
+
+    signals = []
+    url_lower = url.lower()
+    h1 = soup.find("h1")
+    h1_text = h1.get_text(strip=True).lower() if h1 else ""
+    title_tag = soup.find("title")
+    title_text = title_tag.get_text(strip=True).lower() if title_tag else ""
+
+    combined = f"{url_lower} {h1_text} {title_text}"
+
+    for kw in NON_WHEY_KEYWORDS:
+        if kw in combined and "whey" not in combined:
+            signals.append(f"non_whey_keyword:{kw}")
+
+    return bool(signals), signals
+
+
+def is_whey_product_page(html, url: str) -> tuple[bool, dict]:
+    result = {
+        "is_product": False,
+        "is_whey": False,
+        "whey_signal_count": 0,
+        "whey_signals": [],
+        "non_whey_signals": [],
+        "product_reasons": {},
+        "rejection_reason": "",
+    }
+
+    soup = BeautifulSoup(html, "lxml") if isinstance(html, str) else html
+
+    is_prod, prod_reasons = is_product_page(url, soup)
+    result["is_product"] = is_prod
+    result["product_reasons"] = prod_reasons
+
+    if not is_prod:
+        result["rejection_reason"] = f"not_product_page:{prod_reasons.get('rejection_reason', '')}"
+        logger.info(f"[WHEY_VALIDATOR] REJECTED (not product) {url}")
+        return False, result
+
+    is_non_whey, non_whey_signals = _has_non_whey_signals(url, soup, soup)
+    result["non_whey_signals"] = non_whey_signals
+    if is_non_whey:
+        result["rejection_reason"] = f"non_whey_product:{', '.join(non_whey_signals)}"
+        logger.info(f"[WHEY_VALIDATOR] REJECTED (non-whey) {url} => {non_whey_signals}")
+        return False, result
+
+    count, whey_signals = _count_whey_signals(url, soup, soup)
+    result["whey_signal_count"] = count
+    result["whey_signals"] = whey_signals
+
+    if count >= 2:
+        result["is_whey"] = True
+        logger.debug(f"[WHEY_VALIDATOR] ACCEPTED {url} ({count} whey signals: {whey_signals})")
+        return True, result
+
+    result["rejection_reason"] = f"insufficient_whey_signals:{count} (need 2+)"
+    logger.info(f"[WHEY_VALIDATOR] REJECTED (not enough whey signals) {url} => {count} signals: {whey_signals}")
+    return False, result
+
+
 def validate_url_debug(url: str) -> dict:
     import httpx
 

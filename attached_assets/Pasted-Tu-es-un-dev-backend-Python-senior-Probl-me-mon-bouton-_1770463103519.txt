@@ -1,0 +1,50 @@
+Tu es un dev backend Python senior. Problème : mon bouton "Voir le produit" mène parfois à une mauvaise page (homepage, collection, ou même un autre produit non-whey comme une boisson endurance). Je veux un système de résolution d’URL produit (deep link) + une validation “produit whey” stricte + une extraction ingrédients plus robuste.
+
+OBJECTIFS
+A) VALIDATION “PRODUIT WHEY” STRICTE
+1) Ajouter is_whey_product_page(html, url) qui retourne True seulement si :
+   - Page est une page produit achetable (Product JSON-LD + Offer OU add-to-cart + prix)
+   ET
+   - au moins 2 signaux whey :
+     * "whey" dans title/h1/jsonld name/description
+     * breadcrumb/catégorie contient "whey"
+     * url contient "whey" ou "proteine-whey"
+   Sinon => ce n’est PAS une whey (ex: "boisson endurance") et on rejette.
+
+B) PRODUCT URL RESOLVER (DEEP LINK)
+2) Créer resolve_best_product_url(start_url, target_keywords=["whey","isolate","native"]) :
+   - Si start_url n’est pas une page “whey produit”, alors :
+     a) crawler la page (1 niveau max) et récupérer tous les liens internes (même domaine)
+     b) scorer chaque lien candidat avec :
+        +10 si url contient "whey"
+        +8 si anchor/title contient "whey"
+        +6 si url contient "/product" ou "/produit"
+        -10 si url contient "blog", "guide", "collections", "category", "endurance", "boisson"
+     c) tester les TOP 10 liens en les scrapant (limite) et garder le premier qui passe is_whey_product_page()
+   - Retourner la meilleure URL produit whey (sinon None).
+
+3) Intégrer ce resolver dans le pipeline discovery :
+   - Quand Brave renvoie une URL, si elle n’est pas whey produit :
+     => appeler resolve_best_product_url(url)
+     => utiliser l’URL résolue comme Offer.url
+     => si aucune URL whey trouvée, ne pas stocker.
+
+C) EXTRACTION INGREDIENTS ROBUSTE
+4) Améliorer extract_ingredients(html) :
+   - Chercher les titres "Ingrédients" / "Composition" / "Liste des ingrédients"
+   - Récupérer le bloc HTML adjacent (next sibling) et concaténer les <li>, <p>
+   - Si "ingrédients:" dans le texte, extraire 800 chars après
+   - Nettoyer espaces, supprimer menus/footer si possible.
+
+D) “VOIR LE PRODUIT” DOIT POINTER VERS LA PAGE PRODUIT
+5) Vérifier côté frontend :
+   - le lien “Voir le produit” doit utiliser Offer.url (URL résolue) et non la page de départ Brave.
+
+E) DEBUG
+6) Ajouter endpoint GET /debug/resolve?url=... :
+   - renvoie : start_url, is_product, is_whey, resolved_url, reasons, candidats top 10
+7) Logs clairs : pourquoi l’URL a été rejetée (ex: “non whey: endurance/boisson”).
+
+LIVRABLE
+- Fichiers complets : validator.py (is_whey_product_page), resolver.py (resolve_best_product_url), scraper.py mis à jour, main.py endpoints debug.
+- Aucun pseudo-code.
