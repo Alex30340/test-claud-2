@@ -13,9 +13,11 @@ Application SaaS Python/Streamlit pour comparer les proteines whey en France. Mo
 - `validator.py` - Validation prix/poids, compute_confidence_v2 avec support needs_js_render
 - `page_validator.py` - Validateur strict de page produit (is_bad_url, is_product_page, is_whey_product_page, extract_jsonld_product_offer, has_add_to_cart_signals, has_price_signals, has_weight_signals, validate_url_debug)
 - `resolver.py` - Resolveur d'URL whey (resolve_best_product_url, resolve_url_debug) - crawle 1 niveau pour trouver la meilleure page produit whey
+- `nutrition_extractor.py` - Module extraction nutrition fiable (table per 100g, conversion portion, regex contextuel, garde-fous anti-marketing, validation)
 - `scraper.py` - Recherche Brave Search API + extraction multi-couche + pipelines Discovery/Refresh + confidence scoring + filtre whey + resolveur
 - `scoring.py` - Calcul des notes proteique /10, sante /10, prix /10, et note finale (50/35/15 + bonus premium)
 - `test_extractor.py` - Tests unitaires extracteur (15 cas : JSON-LD, OG, Next.js, regex, needs_js_render, crossed prices)
+- `test_nutrition_extractor.py` - Tests unitaires nutrition extractor (11 cas : table, portion, marketing, suspect, JSON-LD)
 - `main.py` - Script CLI (usage autonome)
 - `.streamlit/config.toml` - Configuration Streamlit (port 5000)
 

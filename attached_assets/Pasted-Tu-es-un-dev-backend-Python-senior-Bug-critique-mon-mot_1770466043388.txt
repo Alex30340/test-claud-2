@@ -1,0 +1,49 @@
+Tu es un dev backend Python senior. Bug critique : mon moteur extrait parfois “100g protéines / 100g” alors que c’est faux (ex: Gold Standard est ~77g/100g). Je veux une extraction nutrition fiable avec priorité table nutritionnelle + conversion portion->100g + garde-fous anti-marketing.
+
+OBJECTIFS
+A) Implémenter un module nutrition_extractor.py avec ces fonctions :
+
+1) extract_nutrition_table(html):
+   - détecter tables nutritionnelles (table, div grid) contenant lignes “Protein / Protéines”
+   - détecter colonne “per 100g / pour 100 g”
+   - retourner protein_per_100g si trouvé (float)
+
+2) extract_serving_info(html):
+   - extraire “Serving size” / “Dose” / “Portion” en grammes (serving_size_g)
+   - extraire “Protein per serving” (protein_per_serving_g)
+   - si trouvés, calculer protein_per_100g = (protein_per_serving_g / serving_size_g) * 100
+
+3) extract_protein_per_100g(html):
+   - logique stricte:
+     a) essayer table per 100g (source='table', confidence=0.9)
+     b) sinon essayer conversion portion (source='serving_calc', confidence=0.7)
+     c) sinon regex “protéines … g/100g” uniquement si contexte clair (source='regex', confidence=0.5)
+   - NE JAMAIS utiliser les phrases marketing “100% whey” comme valeur nutrition
+   - retourner (protein_per_100g, source, confidence)
+
+B) Garde-fous cohérence
+4) validate_protein_value(val):
+   - si val >= 96 => suspect -> retourner None et flag suspect=True
+   - si val == 100 => impossible -> None
+   - si val < 40 => pas whey ou parsing faux -> None
+5) exposer dans le JSON :
+   - protein_per_100g
+   - protein_source ('table'|'serving_calc'|'regex'|None)
+   - protein_confidence
+   - protein_suspect (bool)
+
+C) Intégration
+6) Modifier scraper.py pour utiliser nutrition_extractor.extract_protein_per_100g()
+7) Adapter le scoring :
+   - si protein_suspect=True => nutrition score = N/A + baisser confidence_product
+   - afficher dans UI un badge “Donnée nutrition suspecte”
+
+D) Tests
+8) Ajouter 3 tests unitaires:
+   - cas table per 100g (77)
+   - cas portion 24g / 31g => 77.4
+   - cas marketing “100% whey” => ne doit pas donner 100
+
+LIVRABLE
+- Fichiers complets : nutrition_extractor.py + modifications scraper.py + tests
+- Aucun pseudo-code, code exécutable.

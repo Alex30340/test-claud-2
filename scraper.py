@@ -1062,15 +1062,45 @@ def extract_product_data(url: str) -> dict | None:
 
         price_per_kg = validate_price_per_kg(price, weight)
 
+        from nutrition_extractor import extract_protein_per_100g as _extract_protein, extract_protein_from_jsonld
+
         protein_per_100g = None
-        if jsonld:
-            nutrition = jsonld.get("nutrition", {})
-            if isinstance(nutrition, dict):
-                protein_per_100g = parse_protein(nutrition.get("proteinContent", ""))
+        protein_source = None
+        protein_confidence = 0.0
+        protein_suspect = False
+
+        jsonld_protein = extract_protein_from_jsonld(jsonld)
+        if jsonld_protein["protein_per_100g"]:
+            protein_per_100g = jsonld_protein["protein_per_100g"]
+            protein_source = jsonld_protein["protein_source"]
+            protein_confidence = jsonld_protein["protein_confidence"]
+            protein_suspect = jsonld_protein["protein_suspect"]
+        elif jsonld_protein["protein_suspect"]:
+            protein_suspect = True
+
+        if not protein_per_100g:
+            html_protein = _extract_protein(soup)
+            if html_protein["protein_per_100g"]:
+                protein_per_100g = html_protein["protein_per_100g"]
+                protein_source = html_protein["protein_source"]
+                protein_confidence = html_protein["protein_confidence"]
+                protein_suspect = False
+            elif html_protein["protein_suspect"]:
+                protein_suspect = True
 
         if not protein_per_100g:
             nutrition_data = extract_nutrition_from_table(soup)
-            protein_per_100g = nutrition_data.get("protein")
+            fallback = nutrition_data.get("protein")
+            if fallback:
+                from nutrition_extractor import validate_protein_value
+                validated, suspect = validate_protein_value(fallback)
+                if validated:
+                    protein_per_100g = validated
+                    protein_source = "legacy_table"
+                    protein_confidence = 0.5
+                    protein_suspect = False
+                elif suspect:
+                    protein_suspect = True
 
         page_full_text = soup.get_text(" ", strip=True)
         ingredients_text = find_ingredients_block(page_full_text, soup=soup)
@@ -1094,8 +1124,10 @@ def extract_product_data(url: str) -> dict | None:
 
         price_score = calculate_price_score(price_per_kg)
 
+        effective_protein = None if protein_suspect else protein_per_100g
+
         protein_score_result = calculate_protein_score(
-            protein_per_100g=protein_per_100g,
+            protein_per_100g=effective_protein,
             bcaa_per_100g_prot=amino_values["bcaa_per_100g_prot"],
             leucine_g=amino_values["leucine_g"],
             isoleucine_g=amino_values["isoleucine_g"],
@@ -1121,7 +1153,7 @@ def extract_product_data(url: str) -> dict | None:
             score_proteique=protein_score_result["score_proteique"],
             score_sante=health_result["score_sante"],
             price_per_kg=price_per_kg,
-            protein_per_100g=protein_per_100g,
+            protein_per_100g=effective_protein,
             leucine_g=amino_values["leucine_g"],
             has_aminogram=has_aminogram,
             origin_label=origin["origin_label"],
@@ -1140,6 +1172,9 @@ def extract_product_data(url: str) -> dict | None:
             "poids_kg": weight,
             "prix_par_kg": price_per_kg,
             "proteines_100g": protein_per_100g,
+            "protein_source": protein_source,
+            "protein_confidence": protein_confidence,
+            "protein_suspect": protein_suspect,
             "type_whey": whey_type,
             "made_in_france": made_in_france,
             "origin_label": origin["origin_label"],
@@ -1251,6 +1286,9 @@ def split_product_offer(raw: dict) -> tuple[dict, dict]:
         "origin_confidence": raw.get("origin_confidence", 0.3),
         "made_in_france": raw.get("made_in_france", False),
         "profil_suspect": raw.get("profil_suspect", False),
+        "protein_source": raw.get("protein_source"),
+        "protein_confidence": raw.get("protein_confidence", 0.0),
+        "protein_suspect": raw.get("protein_suspect", False),
         "score_proteique": raw.get("score_proteique"),
         "score_sante": raw.get("score_sante"),
         "score_global": raw.get("score_global"),

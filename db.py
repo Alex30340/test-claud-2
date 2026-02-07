@@ -157,6 +157,9 @@ def init_db():
 
     product_new_columns = [
         ("score_final", "FLOAT"),
+        ("protein_source", "VARCHAR(50)"),
+        ("protein_confidence", "FLOAT DEFAULT 0.0"),
+        ("protein_suspect", "BOOLEAN DEFAULT FALSE"),
     ]
     for col_name, col_type in product_new_columns:
         try:
@@ -388,7 +391,8 @@ def upsert_product(product_data: dict) -> int:
             "has_sucralose", "has_acesulfame_k", "has_aspartame",
             "has_artificial_flavors", "has_thickeners", "has_colorants",
             "origin_label", "origin_confidence", "made_in_france",
-            "profil_suspect", "score_proteique", "score_sante", "score_global",
+            "profil_suspect", "protein_source", "protein_confidence", "protein_suspect",
+            "score_proteique", "score_sante", "score_global",
             "score_final", "needs_review",
         ]
 
@@ -416,6 +420,9 @@ def upsert_product(product_data: dict) -> int:
             "origin_confidence": product_data.get("origin_confidence", 0.3),
             "made_in_france": product_data.get("made_in_france", False),
             "profil_suspect": product_data.get("profil_suspect", False),
+            "protein_source": product_data.get("protein_source"),
+            "protein_confidence": product_data.get("protein_confidence", 0.0),
+            "protein_suspect": product_data.get("protein_suspect", False),
             "score_proteique": product_data.get("score_proteique"),
             "score_sante": product_data.get("score_sante"),
             "score_global": product_data.get("score_global"),

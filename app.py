@@ -418,6 +418,8 @@ def render_product_card_v2(rank, row):
     bcaa_val = row.get("bcaa_per_100g_prot")
     leucine_val = row.get("leucine_g")
     profil_suspect = row.get("profil_suspect", False)
+    protein_suspect = row.get("protein_suspect", False)
+    protein_src = row.get("protein_source")
 
     is_top = compute_top_qualite(row)
     is_low_transp = compute_low_transparency(row)
@@ -431,7 +433,12 @@ def render_product_card_v2(rank, row):
     prot_color = "#2ecc71" if is_valid(prot) and prot >= 80 else ("#f39c12" if is_valid(prot) and prot >= 70 else ("#e74c3c" if is_valid(prot) else "#888"))
     prix_kg_color = "#2ecc71" if is_valid(prix_kg) and prix_kg <= 30 else ("#f39c12" if is_valid(prix_kg) and prix_kg <= 50 else ("#e74c3c" if is_valid(prix_kg) else "#888"))
 
-    prot_display = f"{prot:.1f}g" if is_valid(prot) else "N/A"
+    if protein_suspect:
+        prot_display = "<span style='color:#e74c3c;'>Suspecte</span>"
+    elif is_valid(prot):
+        prot_display = f"{prot:.1f}g"
+    else:
+        prot_display = "N/A"
     prix_kg_display = f"{prix_kg:.0f}€" if is_valid(prix_kg) else "N/A"
     prix_display = f"{prix:.2f}€" if is_valid(prix) else "N/A"
     poids_display = f"{poids:.2f}kg" if is_valid(poids) else "N/A"
@@ -448,7 +455,9 @@ def render_product_card_v2(rank, row):
     extra_badges = ""
     if is_top:
         extra_badges += "<span class='ps-badge ps-badge-top'>🏅 TOP QUALITE</span>"
-    if profil_suspect:
+    if protein_suspect:
+        extra_badges += "<span class='ps-badge ps-badge-red'>⚠️ Donnee nutrition suspecte</span>"
+    elif profil_suspect:
         extra_badges += "<span class='ps-badge ps-badge-red'>⚠️ Profil suspect</span>"
     if has_amino:
         extra_badges += "<span class='ps-badge ps-badge-green'>🧬 Aminogramme</span>"
@@ -833,6 +842,8 @@ def render_catalog_card(rank, product):
         "isoleucine_g": product.get("isoleucine_g"),
         "valine_g": product.get("valine_g"),
         "profil_suspect": product.get("profil_suspect", False),
+        "protein_suspect": product.get("protein_suspect", False),
+        "protein_source": product.get("protein_source"),
         "score_proteique": product.get("score_proteique"),
         "score_sante": product.get("score_sante"),
         "score_global": product.get("score_global"),
@@ -873,6 +884,8 @@ def render_catalog_results(products):
             "isoleucine_g": p.get("isoleucine_g"),
             "valine_g": p.get("valine_g"),
             "profil_suspect": p.get("profil_suspect", False),
+            "protein_suspect": p.get("protein_suspect", False),
+            "protein_source": p.get("protein_source"),
             "score_proteique": p.get("score_proteique"),
             "score_sante": p.get("score_sante"),
             "score_global": p.get("score_global"),
@@ -886,7 +899,8 @@ def render_catalog_results(products):
                          ("has_thickeners", False), ("has_colorants", False),
                          ("ingredient_count", None), ("bcaa_per_100g_prot", None),
                          ("leucine_g", None), ("isoleucine_g", None), ("valine_g", None),
-                         ("profil_suspect", False), ("score_proteique", None)]:
+                         ("profil_suspect", False), ("protein_suspect", False),
+                         ("score_proteique", None)]:
         if col not in df.columns:
             df[col] = default
 
