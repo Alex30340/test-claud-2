@@ -1,0 +1,59 @@
+Tu es un dev fullstack senior. J’ai un classement whey mais il n’est pas assez pertinent : le prix remonte trop des produits moyens, et les “bonnes whey” (très pures, compo simple) ne sont pas assez visibles. Je veux corriger le moteur de scoring + le tri UI.
+
+OBJECTIF GÉNÉRAL
+Faire en sorte qu’une “bonne whey” (pure, aminogramme cohérent, peu d’additifs) soit automatiquement plus visible que les produits moyens, même si elle est un peu plus chère.
+
+A) NOUVELLE NOTE GLOBALE (IMPORTANT)
+Actuellement : note_proteique + note_sante => note_globale (60/40) et parfois le prix influence trop.
+Je veux :
+1) Garder note_proteique (/10) et note_sante (/10) comme base (cf barème PDF).
+2) Ajouter un composant PRIX optionnel mais FAIBLE : price_score_10 (/10) calculé via prix/kg.
+3) Nouvelle note finale :
+   note_finale_10 = (note_proteique * 0.50) + (note_sante * 0.35) + (price_score_10 * 0.15)
+   -> Le prix ne doit être qu’un départage entre bons produits.
+
+B) PÉNALITÉ “LISTE INGRÉDIENTS LONGUE” (IMPORTANT)
+Aujourd’hui la pénalité n’est pas assez forte. Ajouter une pénalité dans note_sante (ou un malus séparé appliqué à note_finale_10) :
+- 0 à 6 ingrédients : 0
+- 7 à 9 : -0.5
+- 10 à 14 : -1.0
+- 15 à 20 : -2.0
+- >20 : -3.0
+Cette pénalité doit être appliquée même si la whey est “sans édulcorant”.
+
+C) BONUS “QUALITÉ PREMIUM” (IMPORTANT)
+Ajouter des bonus pour pousser les vraies whey premium en haut :
+- Si protéines/100g >= 90 -> +0.5 sur note_finale_10
+- Si leucine/100g prot >= 10.5 -> +0.3
+- Si aminogramme présent -> +0.3
+- Si origine France explicite -> +0.2
+Plafonner note_finale_10 à 10.0
+
+D) GESTION DES DONNÉES MANQUANTES (IMPORTANT)
+- Si leucine ou BCAA manquent : ne pas mettre 0 (tue les bons produits). Mettre un score “neutre” ou appliquer une pénalité de transparence légère (ex: -0.3) au lieu de 0.
+- Afficher dans l’UI “Leucine: non trouvée” / “BCAA: non trouvés” + un badge “Transparence faible”.
+
+E) TRI ET VISIBILITÉ UI
+1) Le tri principal de la liste doit utiliser note_finale_10 (pas le prix).
+2) Ajouter un tag “TOP QUALITÉ” sur les produits :
+   - note_proteique >= 8.5 ET note_sante >= 8.5 ET ingrédients <= 9
+3) Ajouter un filtre :
+   - “Afficher seulement TOP QUALITÉ”
+   - “Afficher seulement Sans édulcorant”
+4) Afficher un “Pourquoi ce score” en 1 phrase (ex: “Très pure (94g), leucine élevée, aminogramme présent, compo courte”)
+
+F) LIVRABLES
+- Donne-moi les fichiers complets à modifier/créer (chemins inclus) dans mon projet Replit.
+- Implémente :
+  - calculate_price_score_10()
+  - calculate_final_score_10()
+  - ingredient_count_penalty()
+  - premium_bonus()
+- Mets à jour l’API (/products, /products/top) pour exposer :
+  - note_finale_10
+  - is_top_qualite (bool)
+  - transparency_flag (bool)
+- Mets à jour le frontend V2 pour afficher note_finale_10 en étoiles (/5) + badge TOP QUALITÉ.
+
+IMPORTANT : Pas de pseudo-code, uniquement du code exécutable.
+Commence par la structure des fichiers puis donne chaque fichier complet.

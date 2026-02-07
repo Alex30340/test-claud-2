@@ -14,6 +14,7 @@ from scoring import (
     calculate_protein_score,
     calculate_health_score,
     calculate_global_score,
+    calculate_final_score_10,
 )
 from extractor import extract_price, extract_currency, extract_weight_kg, detect_needs_js_render
 from validator import validate_price, validate_weight, validate_price_per_kg, compute_confidence_v2
@@ -1015,6 +1016,19 @@ def extract_product_data(url: str) -> dict | None:
             health_result["score_sante"],
         )
 
+        final_result = calculate_final_score_10(
+            score_proteique=protein_score_result["score_proteique"],
+            score_sante=health_result["score_sante"],
+            price_per_kg=price_per_kg,
+            protein_per_100g=protein_per_100g,
+            leucine_g=amino_values["leucine_g"],
+            has_aminogram=has_aminogram,
+            origin_label=origin["origin_label"],
+            bcaa_missing=protein_score_result.get("bcaa_missing", False),
+            leucine_missing=protein_score_result.get("leucine_missing", False),
+            ingredient_count=ingredient_count,
+        )
+
         return {
             "nom": name.strip(),
             "marque": brand.strip() if brand else "",
@@ -1048,6 +1062,10 @@ def extract_product_data(url: str) -> dict | None:
             "score_sante": health_result["score_sante"],
             "score_prix": price_score,
             "score_global": global_score,
+            "score_final": final_result["score_final"],
+            "price_score_10": final_result["price_score_10"],
+            "is_top_qualite": final_result["is_top_qualite"],
+            "is_low_transparency": final_result["is_low_transparency"],
             "date_recuperation": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "_has_jsonld": jsonld is not None,
             "_price_source": price_source,
@@ -1135,6 +1153,7 @@ def split_product_offer(raw: dict) -> tuple[dict, dict]:
         "score_proteique": raw.get("score_proteique"),
         "score_sante": raw.get("score_sante"),
         "score_global": raw.get("score_global"),
+        "score_final": raw.get("score_final"),
     }
 
     merchant = urlparse(raw.get("url", "")).netloc.replace("www.", "")
@@ -1190,7 +1209,7 @@ def scrape_products(api_key: str, progress_callback=None, status_callback=None) 
             if result:
                 products.append(result)
 
-    products.sort(key=lambda p: p.get("score_global") or -1, reverse=True)
+    products.sort(key=lambda p: p.get("score_final") or p.get("score_global") or -1, reverse=True)
 
     return products
 

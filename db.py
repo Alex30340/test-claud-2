@@ -86,6 +86,7 @@ def init_db():
             score_proteique FLOAT,
             score_sante FLOAT,
             score_global FLOAT,
+            score_final FLOAT,
             needs_review BOOLEAN DEFAULT FALSE,
             created_at TIMESTAMP NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMP NOT NULL DEFAULT NOW()
@@ -145,10 +146,21 @@ def init_db():
         ("valine_g", "FLOAT"),
         ("profil_suspect", "BOOLEAN DEFAULT FALSE"),
         ("score_proteique", "FLOAT"),
+        ("score_final", "FLOAT"),
     ]
     for col_name, col_type in new_columns:
         try:
             cur.execute(f"ALTER TABLE scan_items ADD COLUMN {col_name} {col_type}")
+            conn.commit()
+        except psycopg2.errors.DuplicateColumn:
+            conn.rollback()
+
+    product_new_columns = [
+        ("score_final", "FLOAT"),
+    ]
+    for col_name, col_type in product_new_columns:
+        try:
+            cur.execute(f"ALTER TABLE products ADD COLUMN {col_name} {col_type}")
             conn.commit()
         except psycopg2.errors.DuplicateColumn:
             conn.rollback()
@@ -377,7 +389,7 @@ def upsert_product(product_data: dict) -> int:
             "has_artificial_flavors", "has_thickeners", "has_colorants",
             "origin_label", "origin_confidence", "made_in_france",
             "profil_suspect", "score_proteique", "score_sante", "score_global",
-            "needs_review",
+            "score_final", "needs_review",
         ]
 
         values = {
@@ -407,6 +419,7 @@ def upsert_product(product_data: dict) -> int:
             "score_proteique": product_data.get("score_proteique"),
             "score_sante": product_data.get("score_sante"),
             "score_global": product_data.get("score_global"),
+            "score_final": product_data.get("score_final"),
             "needs_review": product_data.get("needs_review", False),
         }
 
@@ -510,7 +523,7 @@ def get_all_products(min_confidence: float = 0.0, limit: int = 200) -> list[dict
             FROM products p
             LEFT JOIN best_offers bo ON p.id = bo.product_id
             WHERE bo.offer_confidence >= %s OR bo.offer_confidence IS NULL
-            ORDER BY p.score_global DESC NULLS LAST
+            ORDER BY p.score_final DESC NULLS LAST, p.score_global DESC NULLS LAST
             LIMIT %s""",
             (min_confidence, limit),
         )

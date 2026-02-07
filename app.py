@@ -9,7 +9,7 @@ from scraper import (
     run_discovery, run_refresh, get_discovery_stats_from_db,
     SEED_BRANDS, BLOCK_DOMAINS, MAX_PER_DOMAIN,
 )
-from scoring import calculate_price_score
+from scoring import calculate_price_score, calculate_final_score_10, calculate_price_score_10
 from db import (
     init_db, create_user, get_user_by_email,
     save_scan, get_user_scans, get_scan_items,
@@ -85,6 +85,21 @@ CARD_CSS = """
 .ps-badge-gray { background: rgba(150,150,160,0.15); color: #999; border: 1px solid rgba(150,150,160,0.3); }
 .ps-badge-purple { background: rgba(155,89,182,0.18); color: #9b59b6; border: 1px solid rgba(155,89,182,0.3); }
 .ps-badge-orange { background: rgba(243,156,18,0.18); color: #f39c12; border: 1px solid rgba(243,156,18,0.3); }
+.ps-badge-top {
+    background: linear-gradient(135deg, rgba(241,196,15,0.3), rgba(243,156,18,0.3));
+    color: #f1c40f;
+    border: 2px solid rgba(241,196,15,0.6);
+    font-weight: 800;
+    font-size: 0.85em;
+    letter-spacing: 0.5px;
+    padding: 3px 12px;
+    animation: glow 2s ease-in-out infinite alternate;
+}
+@keyframes glow {
+    from { box-shadow: 0 0 3px rgba(241,196,15,0.2); }
+    to { box-shadow: 0 0 8px rgba(241,196,15,0.4); }
+}
+.ps-badge-transp { background: rgba(150,150,160,0.12); color: #aaa; border: 1px dashed rgba(150,150,160,0.4); }
 .ps-metrics {
     display: flex;
     gap: 18px;
@@ -257,33 +272,42 @@ def build_why_text(row):
 
     prot = row.get("proteines_100g")
     if is_valid(prot):
-        if prot > 85:
-            reasons.append(f"haute teneur ({prot:.0f}%)")
+        if prot >= 90:
+            reasons.append(f"tres pure ({prot:.0f}g)")
+        elif prot > 85:
+            reasons.append(f"haute teneur ({prot:.0f}g)")
         elif prot >= 80:
-            reasons.append(f"bonne teneur ({prot:.0f}%)")
+            reasons.append(f"bonne teneur ({prot:.0f}g)")
         elif prot >= 75:
-            reasons.append(f"teneur correcte ({prot:.0f}%)")
+            reasons.append(f"teneur correcte ({prot:.0f}g)")
         else:
-            reasons.append(f"teneur faible ({prot:.0f}%)")
+            reasons.append(f"teneur faible ({prot:.0f}g)")
+
+    leucine = row.get("leucine_g")
+    if is_valid(leucine):
+        if leucine >= 10.5:
+            reasons.append(f"leucine elevee ({leucine:.1f}g)")
+        elif leucine >= 8:
+            reasons.append(f"leucine correcte ({leucine:.1f}g)")
+    else:
+        reasons.append("leucine: non trouvee")
 
     bcaa = row.get("bcaa_per_100g_prot")
     if is_valid(bcaa):
         if bcaa > 24:
-            reasons.append(f"BCAA excellent ({bcaa:.0f}g/100g prot)")
+            reasons.append(f"BCAA excellent ({bcaa:.0f}g)")
         elif bcaa >= 20:
-            reasons.append(f"BCAA correct ({bcaa:.0f}g/100g prot)")
+            reasons.append(f"BCAA correct ({bcaa:.0f}g)")
         else:
-            reasons.append(f"BCAA faible ({bcaa:.0f}g/100g prot)")
+            reasons.append(f"BCAA faible ({bcaa:.0f}g)")
+    else:
+        reasons.append("BCAA: non trouves")
 
-    leucine = row.get("leucine_g")
-    if is_valid(leucine):
-        if leucine > 10:
-            reasons.append(f"leucine elevee ({leucine:.1f}g)")
-        elif leucine >= 8:
-            reasons.append(f"leucine correcte ({leucine:.1f}g)")
+    if row.get("has_aminogram"):
+        reasons.append("aminogramme present")
 
     if row.get("profil_suspect"):
-        reasons.append("⚠️ profil amino suspect")
+        reasons.append("profil amino suspect")
 
     s_sante = row.get("score_sante")
     if is_valid(s_sante):
@@ -294,19 +318,72 @@ def build_why_text(row):
         elif s_sante < 5:
             reasons.append("composition a ameliorer")
 
+    ingredient_count = row.get("ingredient_count")
+    if is_valid(ingredient_count) and ingredient_count <= 6:
+        reasons.append(f"compo courte ({ingredient_count} ingr.)")
+
     has_sucr = row.get("has_sucralose", False)
     has_ace = row.get("has_acesulfame_k", False)
     has_asp = row.get("has_aspartame", False)
     if not has_sucr and not has_ace and not has_asp:
         reasons.append("sans edulcorant")
 
+    origin = row.get("origin_label", "Inconnu")
+    if origin == "France":
+        reasons.append("fabrication France")
+
     return " · ".join(reasons) if reasons else "Donnees insuffisantes"
+
+
+def compute_top_qualite(row):
+    sp = row.get("score_proteique")
+    ss = row.get("score_sante")
+    ic = row.get("ingredient_count")
+    if not is_valid(sp) or not is_valid(ss):
+        return False
+    if sp >= 8.5 and ss >= 8.5:
+        if is_valid(ic) and ic <= 9:
+            return True
+        if not is_valid(ic):
+            return True
+    return False
+
+
+def compute_low_transparency(row):
+    bcaa = row.get("bcaa_per_100g_prot")
+    leucine = row.get("leucine_g")
+    return not is_valid(bcaa) or not is_valid(leucine)
+
+
+def get_score_final_for_row(row):
+    sf = row.get("score_final")
+    if is_valid(sf):
+        return sf
+    sp = row.get("score_proteique")
+    ss = row.get("score_sante")
+    pkg = row.get("prix_par_kg")
+    if is_valid(sp) or is_valid(ss):
+        result = calculate_final_score_10(
+            score_proteique=sp,
+            score_sante=ss,
+            price_per_kg=pkg,
+            protein_per_100g=row.get("proteines_100g"),
+            leucine_g=row.get("leucine_g"),
+            has_aminogram=row.get("has_aminogram", False),
+            origin_label=row.get("origin_label", "Inconnu"),
+            bcaa_missing=not is_valid(row.get("bcaa_per_100g_prot")),
+            leucine_missing=not is_valid(row.get("leucine_g")),
+            ingredient_count=row.get("ingredient_count"),
+        )
+        return result["score_final"]
+    return row.get("score_global")
 
 
 def render_product_card_v2(rank, row):
     s_global = row.get("score_global")
     s_proteique = row.get("score_proteique")
     s_sante = row.get("score_sante")
+    s_final = get_score_final_for_row(row)
 
     import re as _re
     raw_nom = str(row.get("nom", "Produit inconnu") or "Produit inconnu")
@@ -341,8 +418,12 @@ def render_product_card_v2(rank, row):
     leucine_val = row.get("leucine_g")
     profil_suspect = row.get("profil_suspect", False)
 
-    color = score_color_10(s_global)
-    stars_global, stars_num = score_to_stars_10(s_global)
+    is_top = compute_top_qualite(row)
+    is_low_transp = compute_low_transparency(row)
+
+    display_score = s_final if is_valid(s_final) else s_global
+    color = score_color_10(display_score)
+    stars_global, stars_num = score_to_stars_10(display_score)
     stars_prot, prot_score_num = score_to_stars_10(s_proteique)
     stars_sante, sante_num = score_to_stars_10(s_sante)
 
@@ -353,10 +434,10 @@ def render_product_card_v2(rank, row):
     prix_kg_display = f"{prix_kg:.0f}€" if is_valid(prix_kg) else "N/A"
     prix_display = f"{prix:.2f}€" if is_valid(prix) else "N/A"
     poids_display = f"{poids:.2f}kg" if is_valid(poids) else "N/A"
-    bcaa_display = f"{bcaa_val:.1f}g" if is_valid(bcaa_val) else "—"
-    leucine_display = f"{leucine_val:.1f}g" if is_valid(leucine_val) else "—"
+    bcaa_display = f"{bcaa_val:.1f}g" if is_valid(bcaa_val) else "<span style='color:#999;font-size:0.85em;'>non trouve</span>"
+    leucine_display = f"{leucine_val:.1f}g" if is_valid(leucine_val) else "<span style='color:#999;font-size:0.85em;'>non trouvee</span>"
     ingr_display = str(ingredient_count) if is_valid(ingredient_count) else "—"
-    qual_label = quality_label(s_global)
+    qual_label = quality_label(display_score)
 
     whey_badge = get_whey_badge(type_whey)
     origin_badge = get_origin_badge(origin_label)
@@ -364,6 +445,8 @@ def render_product_card_v2(rank, row):
     additive_badges = get_additive_badges(has_flavors, has_thick, has_color)
 
     extra_badges = ""
+    if is_top:
+        extra_badges += "<span class='ps-badge ps-badge-top'>🏅 TOP QUALITE</span>"
     if profil_suspect:
         extra_badges += "<span class='ps-badge ps-badge-red'>⚠️ Profil suspect</span>"
     if has_amino:
@@ -372,11 +455,16 @@ def render_product_card_v2(rank, row):
         extra_badges += "<span class='ps-badge ps-badge-blue'>💊 BCAA</span>"
     if is_valid(ingredient_count) and ingredient_count > 6:
         extra_badges += f"<span class='ps-badge ps-badge-orange'>📋 {ingredient_count} ingredients</span>"
+    if is_low_transp:
+        extra_badges += "<span class='ps-badge ps-badge-transp'>🔍 Transparence faible</span>"
 
     why_text = build_why_text(row)
     link_html = f"<a href='{url}' target='_blank' class='ps-link'>🔗 Voir le produit</a>" if url else ""
 
-    global_display = f"{s_global:.1f}/10" if is_valid(s_global) else "N/A"
+    final_display = f"{display_score:.1f}/10" if is_valid(display_score) else "N/A"
+
+    price_score_10 = calculate_price_score_10(prix_kg)
+    ps10_stars, ps10_num = score_to_stars_10(price_score_10)
 
     card_html = f"""
     <div class='ps-card'>
@@ -385,7 +473,7 @@ def render_product_card_v2(rank, row):
         <div style='flex-shrink:0;min-width:75px;text-align:center;'>
           <div class='ps-rank' style='color:{color};'>#{rank}</div>
           <div class='ps-stars'>{stars_global}</div>
-          <div class='ps-score-big' style='color:{color};'>{global_display}</div>
+          <div class='ps-score-big' style='color:{color};'>{final_display}</div>
           <div style='font-size:0.75em;color:#888;'>{qual_label}</div>
         </div>
 
@@ -428,7 +516,7 @@ def render_product_card_v2(rank, row):
           <div style='margin-top:6px;'>{link_html}</div>
         </div>
 
-        <div style='min-width:180px;'>
+        <div style='min-width:200px;'>
           <div class='ps-sub-scores'>
             <div class='ps-sub-score'>
               <div class='ps-sub-label'>Proteique</div>
@@ -439,6 +527,11 @@ def render_product_card_v2(rank, row):
               <div class='ps-sub-label'>Sante</div>
               <div class='ps-stars-sm'>{stars_sante}</div>
               <div style='font-size:0.9em;font-weight:700;color:{score_color_10(s_sante)};'>{sante_num}</div>
+            </div>
+            <div class='ps-sub-score'>
+              <div class='ps-sub-label'>Prix</div>
+              <div class='ps-stars-sm'>{ps10_stars}</div>
+              <div style='font-size:0.9em;font-weight:700;color:{score_color_10(price_score_10)};'>{ps10_num}</div>
             </div>
           </div>
 
@@ -499,18 +592,20 @@ def render_results(products_data, is_dataframe=True):
         leg1, leg2, leg3 = st.columns(3)
         with leg1:
             st.markdown("""
-**Note Proteique /10 (60% du global)**
+**Note Proteique /10 (50% de la finale)**
 
-| Critere | Barme |
+| Critere | Bareme |
 |---------|--------|
 | **% proteines** (sur 5) | <70%=1, 70-75=2, 75-80=3, 80-85=4, >85%=5 |
 | **BCAA/100g prot** (sur 3) | <20g=1, 20-24g=2, >24g=3 |
 | **Leucine/100g prot** (sur 2) | <8g=0, 8-10g=1, >10g=2 |
 | **Equilibre BCAA** | Ratio 2:1:1 attendu, malus -1 a -2 si suspect |
+
+*Si BCAA/leucine non trouves : score neutre (pas 0)*
 """)
         with leg2:
             st.markdown("""
-**Note Sante /10 (40% du global)**
+**Note Sante /10 (35% de la finale)**
 
 Commence a 10, puis malus :
 
@@ -521,42 +616,49 @@ Commence a 10, puis malus :
 | Aromes artificiels | -1 |
 | Epaississants (xanthane, carraghenane) | -1 |
 | Colorants | -1 |
-| Liste longue (>6 ingredients) | -1 |
+| 7-9 ingredients | -0.5 |
+| 10-14 ingredients | -1.0 |
+| 15-20 ingredients | -2.0 |
+| >20 ingredients | -3.0 |
 """)
         with leg3:
             st.markdown("""
-**Interpretation des notes**
+**Note Finale /10**
 
-| Note | Qualite |
-|------|---------|
-| 9-10 | ★★★★★ Excellent |
-| 7-8 | ★★★★☆ Tres bien |
-| 5-6 | ★★★☆☆ Correct |
-| 3-4 | ★★☆☆☆ Moyen |
-| 0-2 | ★☆☆☆☆ Faible |
+= (proteique x 0.50) + (sante x 0.35) + (prix x 0.15)
 
-**Note globale** = (proteique × 0.6) + (sante × 0.4)
+**Bonus premium :**
+- Proteines >= 90g/100g : +0.5
+- Leucine >= 10.5g : +0.3
+- Aminogramme present : +0.3
+- Origine France : +0.2
 
-*Le prix n'entre pas dans la note mais est affiche comme info*
+**Badges :**
+- 🏅 TOP QUALITE : prot >= 8.5 + sante >= 8.5 + <= 9 ingr.
+- 🔍 Transparence faible : BCAA ou leucine non trouves
+
+*Le prix n'est qu'un departage entre bons produits (15%)*
 """)
 
     st.divider()
 
-    fcol1, fcol2, fcol3, fcol4, fcol5 = st.columns([2, 1.5, 1.5, 1.5, 2])
+    fcol1, fcol2, fcol3, fcol4, fcol5, fcol6 = st.columns([2, 1.2, 1.2, 1.2, 1.2, 2])
 
     with fcol1:
         sort_option = st.selectbox(
             "Trier par",
-            ["Note Globale", "Note Proteique", "Note Sante", "Prix/kg (croissant)", "Proteines/100g (decroissant)"],
+            ["Note Finale", "Note Proteique", "Note Sante", "Prix/kg (croissant)", "Proteines/100g (decroissant)"],
             key="sort_option",
         )
     with fcol2:
-        filter_no_sweetener = st.toggle("Sans edulcorant", key="filter_no_sweet")
+        filter_top = st.toggle("TOP QUALITE", key="filter_top_qualite")
     with fcol3:
-        filter_france = st.toggle("Fabrication France", key="filter_france")
+        filter_no_sweetener = st.toggle("Sans edulcorant", key="filter_no_sweet")
     with fcol4:
-        filter_clean = st.toggle("Composition propre (≥8/10)", key="filter_clean")
+        filter_france = st.toggle("Fabrication France", key="filter_france")
     with fcol5:
+        filter_clean = st.toggle("Compo propre (≥8)", key="filter_clean")
+    with fcol6:
         type_options = ["Tous"] + sorted(set(
             str(t).capitalize() for t in df["type_whey"].dropna().unique() if t and str(t) != "unknown"
         ))
@@ -591,17 +693,23 @@ Commence a 10, puis malus :
         if "score_sante" in filtered_df.columns:
             filtered_df = filtered_df[filtered_df["score_sante"].fillna(0) >= 8]
 
+    if filter_top:
+        filtered_df = filtered_df[filtered_df.apply(lambda r: compute_top_qualite(r), axis=1)]
+
     if filter_type and filter_type != "Tous":
         filtered_df = filtered_df[filtered_df["type_whey"].fillna("unknown").str.lower() == filter_type.lower()]
 
+    if "score_final" not in filtered_df.columns:
+        filtered_df["score_final"] = filtered_df.apply(lambda r: get_score_final_for_row(r), axis=1)
+
     sort_map = {
-        "Note Globale": ("score_global", False),
+        "Note Finale": ("score_final", False),
         "Note Proteique": ("score_proteique", False),
         "Note Sante": ("score_sante", False),
         "Prix/kg (croissant)": ("prix_par_kg", True),
         "Proteines/100g (decroissant)": ("proteines_100g", False),
     }
-    sort_col, sort_asc = sort_map.get(sort_option, ("score_global", False))
+    sort_col, sort_asc = sort_map.get(sort_option, ("score_final", False))
 
     if sort_col in filtered_df.columns:
         sorted_df = filtered_df.sort_values(sort_col, ascending=sort_asc, na_position="last")
@@ -623,7 +731,7 @@ Commence a 10, puis malus :
         "has_sucralose", "has_acesulfame_k", "has_aspartame",
         "has_artificial_flavors", "has_thickeners", "has_colorants",
         "profil_suspect",
-        "score_proteique", "score_sante", "score_global",
+        "score_proteique", "score_sante", "score_final",
     ]
     existing_cols = [c for c in display_cols if c in sorted_df.columns]
 
@@ -648,7 +756,7 @@ Commence a 10, puis malus :
         "profil_suspect": st.column_config.CheckboxColumn("Profil suspect"),
         "score_proteique": st.column_config.ProgressColumn("Proteique /10", min_value=0, max_value=10),
         "score_sante": st.column_config.ProgressColumn("Sante /10", min_value=0, max_value=10),
-        "score_global": st.column_config.ProgressColumn("Global /10", min_value=0, max_value=10),
+        "score_final": st.column_config.ProgressColumn("Finale /10", min_value=0, max_value=10),
     }
 
     st.dataframe(
@@ -727,6 +835,7 @@ def render_catalog_card(rank, product):
         "score_proteique": product.get("score_proteique"),
         "score_sante": product.get("score_sante"),
         "score_global": product.get("score_global"),
+        "score_final": product.get("score_final"),
     }
 
     render_product_card_v2(rank, mapped)
@@ -766,6 +875,7 @@ def render_catalog_results(products):
             "score_proteique": p.get("score_proteique"),
             "score_sante": p.get("score_sante"),
             "score_global": p.get("score_global"),
+            "score_final": p.get("score_final"),
             "offer_confidence": p.get("offer_confidence"),
         })
 
@@ -803,21 +913,23 @@ def render_catalog_results(products):
 
     st.divider()
 
-    fcol1, fcol2, fcol3, fcol4, fcol5 = st.columns([2, 1.5, 1.5, 1.5, 2])
+    fcol1, fcol2, fcol3, fcol4, fcol5, fcol6 = st.columns([2, 1.2, 1.2, 1.2, 1.2, 2])
 
     with fcol1:
         sort_option = st.selectbox(
             "Trier par",
-            ["Note Globale", "Note Proteique", "Note Sante", "Prix/kg (croissant)", "Proteines/100g (decroissant)"],
+            ["Note Finale", "Note Proteique", "Note Sante", "Prix/kg (croissant)", "Proteines/100g (decroissant)"],
             key="cat_sort_option",
         )
     with fcol2:
-        filter_no_sweetener = st.toggle("Sans edulcorant", key="cat_filter_no_sweet")
+        filter_top = st.toggle("TOP QUALITE", key="cat_filter_top_qualite")
     with fcol3:
-        filter_france = st.toggle("Fabrication France", key="cat_filter_france")
+        filter_no_sweetener = st.toggle("Sans edulcorant", key="cat_filter_no_sweet")
     with fcol4:
-        filter_clean = st.toggle("Composition propre (≥8/10)", key="cat_filter_clean")
+        filter_france = st.toggle("Fabrication France", key="cat_filter_france")
     with fcol5:
+        filter_clean = st.toggle("Compo propre (≥8)", key="cat_filter_clean")
+    with fcol6:
         type_options = ["Tous"] + sorted(set(
             str(t).capitalize() for t in df["type_whey"].dropna().unique() if t and str(t) != "unknown"
         ))
@@ -850,17 +962,23 @@ def render_catalog_results(products):
         if "score_sante" in filtered_df.columns:
             filtered_df = filtered_df[filtered_df["score_sante"].fillna(0) >= 8]
 
+    if filter_top:
+        filtered_df = filtered_df[filtered_df.apply(lambda r: compute_top_qualite(r), axis=1)]
+
     if filter_type and filter_type != "Tous":
         filtered_df = filtered_df[filtered_df["type_whey"].fillna("unknown").str.lower() == filter_type.lower()]
 
+    if "score_final" not in filtered_df.columns:
+        filtered_df["score_final"] = filtered_df.apply(lambda r: get_score_final_for_row(r), axis=1)
+
     sort_map = {
-        "Note Globale": ("score_global", False),
+        "Note Finale": ("score_final", False),
         "Note Proteique": ("score_proteique", False),
         "Note Sante": ("score_sante", False),
         "Prix/kg (croissant)": ("prix_par_kg", True),
         "Proteines/100g (decroissant)": ("proteines_100g", False),
     }
-    sort_col, sort_asc = sort_map.get(sort_option, ("score_global", False))
+    sort_col, sort_asc = sort_map.get(sort_option, ("score_final", False))
 
     if sort_col in filtered_df.columns:
         sorted_df = filtered_df.sort_values(sort_col, ascending=sort_asc, na_position="last")
@@ -885,7 +1003,7 @@ def render_catalog_results(products):
         "has_sucralose", "has_acesulfame_k", "has_aspartame",
         "has_artificial_flavors", "has_thickeners", "has_colorants",
         "profil_suspect",
-        "score_proteique", "score_sante", "score_global",
+        "score_proteique", "score_sante", "score_final",
     ]
     existing_cols = [c for c in display_cols if c in sorted_df.columns]
 
@@ -910,7 +1028,7 @@ def render_catalog_results(products):
         "profil_suspect": st.column_config.CheckboxColumn("Profil suspect"),
         "score_proteique": st.column_config.ProgressColumn("Proteique /10", min_value=0, max_value=10),
         "score_sante": st.column_config.ProgressColumn("Sante /10", min_value=0, max_value=10),
-        "score_global": st.column_config.ProgressColumn("Global /10", min_value=0, max_value=10),
+        "score_final": st.column_config.ProgressColumn("Finale /10", min_value=0, max_value=10),
     }
 
     st.dataframe(

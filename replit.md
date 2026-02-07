@@ -13,7 +13,7 @@ Application SaaS Python/Streamlit pour comparer les proteines whey en France. Mo
 - `validator.py` - Validation prix/poids, compute_confidence_v2 avec support needs_js_render
 - `page_validator.py` - Validateur strict de page produit (is_bad_url, is_product_page, extract_jsonld_product_offer, has_add_to_cart_signals, has_price_signals, has_weight_signals, validate_url_debug)
 - `scraper.py` - Recherche Brave Search API + extraction multi-couche + pipelines Discovery/Refresh + confidence scoring
-- `scoring.py` - Calcul des notes proteique /10, sante /10, et globale (60/40)
+- `scoring.py` - Calcul des notes proteique /10, sante /10, prix /10, et note finale (50/35/15 + bonus premium)
 - `test_extractor.py` - Tests unitaires extracteur (15 cas : JSON-LD, OG, Next.js, regex, needs_js_render, crossed prices)
 - `main.py` - Script CLI (usage autonome)
 - `.streamlit/config.toml` - Configuration Streamlit (port 5000)
@@ -68,26 +68,43 @@ Score composite base sur :
 - **Free** : 3 scans par mois
 - **Pro** : illimite (Stripe non encore integre)
 
-### Scoring System (V2 - Notes sur 10)
+### Scoring System (V3 - Note Finale /10)
 
-#### Note Proteique /10 (60% du global)
+#### Note Proteique /10 (50% de la finale)
 - Critere 1 : % proteines (sur 5 pts) : <70%=1, 70-75=2, 75-80=3, 80-85=4, >85%=5
-- Critere 2 : BCAA pour 100g de proteines (sur 3 pts) : <20g=1, 20-24g=2, >24g=3
-- Critere 3 : Leucine pour 100g de proteines (sur 2 pts) : <8g=0, 8-10g=1, >10g=2
+- Critere 2 : BCAA pour 100g de proteines (sur 3 pts) : <20g=1, 20-24g=2, >24g=3 (neutre si absent)
+- Critere 3 : Leucine pour 100g de proteines (sur 2 pts) : <8g=0, 8-10g=1, >10g=2 (neutre si absent)
 - Critere 4 : Equilibre BCAA (controle qualite) : ratio 2:1:1 attendu (~10g leucine, ~5g iso, ~5g val), malus -1 a -2 si ratio suspect
 
-#### Note Sante /10 (40% du global)
+#### Note Sante /10 (35% de la finale)
 Commence a 10, puis malus :
 - Edulcorant artificiel (sucralose, acesulfame-K) : -2
 - Plusieurs edulcorants : -3 (au lieu de -2)
 - Aromes artificiels : -1
 - Epaississants (gomme xanthane, carraghenanes) : -1
 - Colorants : -1
-- Liste d'ingredients longue (>6 ingredients) : -1
+- 7-9 ingredients : -0.5
+- 10-14 ingredients : -1.0
+- 15-20 ingredients : -2.0
+- >20 ingredients : -3.0
 
-#### Note Globale
-- Note globale = (note proteique x 0.6) + (note sante x 0.4)
-- Le prix n'entre PAS dans la note globale mais est affiche comme information
+#### Note Prix /10 (15% de la finale)
+- 12 paliers de <=15 EUR/kg (10/10) a >160 EUR/kg (0/10)
+- Score par paliers fixes (stepwise)
+
+#### Note Finale /10
+- note_finale = (proteique x 0.50) + (sante x 0.35) + (prix x 0.15) + bonus_premium
+- Bonus premium (max +1.3) :
+  - Proteines >= 90g/100g : +0.5
+  - Leucine >= 10.5g : +0.3
+  - Aminogramme present : +0.3
+  - Origine France : +0.2
+- Plafond a 10.0
+- score_global legacy (60/40) conserve pour compatibilite
+
+#### Badges
+- 🏅 TOP QUALITE : score_proteique >= 8.5 AND score_sante >= 8.5 AND ingredient_count <= 9
+- 🔍 Transparence faible : BCAA ou leucine non trouves
 
 #### Interpretation
 - 9-10 : Excellent (tres propre)
@@ -184,5 +201,5 @@ Sites exclus : Amazon (503), Decathlon (403), reseaux sociaux, sites media/sante
 - Stripe integration was proposed but user dismissed the setup. Can be added later.
 - Database is auto-initialized on app startup via init_db() with automatic migration for new columns.
 - Future vision: whey is just one tab; the platform will include profile analysis, muscle programs, diet programs, and recommendations based on user profile (height, weight, body analysis).
-- Score prix calcule_price_score() est conserve pour affichage informatif mais ne fait plus partie de la note globale.
+- Score prix (15% de la note finale) calcule via calculate_price_score_10() sur 12 paliers. score_global legacy (60/40) conserve pour compatibilite.
 - Legacy scan system (scans + scan_items) coexiste avec le nouveau systeme Product/Offer pour compatibilite.
