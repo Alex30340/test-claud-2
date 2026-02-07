@@ -16,8 +16,11 @@ BAD_URL_PATH_PATTERNS = [
     "/editorial/", "/top-", "/classement/",
     "/versus/", "/vs-", "/comment-choisir",
     "/pourquoi-", "/difference-entre",
-    "/post/", "/collections", "/pages/",
+    "/post/", "/pages/",
     "/wiki/", "/glossaire/", "/lexique/",
+    "/collections/", "/product-category/",
+    "/categorie-produit/", "/categorie/",
+    "/info/", "/fr/info/",
 ]
 
 BAD_URL_EXTENSIONS = [
@@ -64,6 +67,21 @@ ARTICLE_H1_KEYWORDS = [
 ]
 
 
+CATEGORY_URL_PATTERNS = re.compile(
+    r"(/store/[^/]*/?$"
+    r"|/boutique/[^/]*/?$"
+    r"|/c/[^/]+/"
+    r"|/\d+-[a-z][a-z-]+/?$"
+    r"|/\d+_[a-z]"
+    r"|proteines-c-\d+"
+    r"|/cat-\d+\.html$"
+    r")",
+    re.I,
+)
+
+HOMEPAGE_PATTERN = re.compile(r"^/?$")
+
+
 def is_bad_url(url: str) -> tuple[bool, str]:
     parsed = urlparse(url)
     domain = parsed.netloc.lower()
@@ -81,6 +99,13 @@ def is_bad_url(url: str) -> tuple[bool, str]:
     for pattern in BAD_URL_PATH_PATTERNS:
         if pattern in full:
             return True, f"bad_path:{pattern}"
+
+    if HOMEPAGE_PATTERN.match(path):
+        return True, "homepage"
+
+    cat_match = CATEGORY_URL_PATTERNS.search(path)
+    if cat_match:
+        return True, f"category_url:{cat_match.group(0)}"
 
     return False, ""
 
@@ -339,23 +364,68 @@ def is_article_page(url: str, soup: BeautifulSoup) -> tuple[bool, list[str]]:
     return bool(reasons), reasons
 
 
-def _classify_page_type(url: str, soup: BeautifulSoup) -> str:
-    url_lower = url.lower()
-    path = urlparse(url_lower).path
+CATEGORY_TITLE_PATTERNS = [
+    re.compile(r"\bachat\s*/\s*vente\b", re.I),
+    re.compile(r"\bpas\s+cher\b", re.I),
+    re.compile(r"\btoutes?\s+les?\s+(meilleur|whey|protéine|proteine)\b", re.I),
+    re.compile(r"\ben\s+ligne\b", re.I),
+    re.compile(r"\bdécouvrez\s+tout\b", re.I),
+    re.compile(r"\bprotéines?\s+en\s+poudre\s*[|:]", re.I),
+    re.compile(r"\bgamme\s+(classique|sans|complète)\b", re.I),
+]
 
+CATEGORY_PATH_PATTERNS = [
+    "/collections/", "/collections",
+    "/product-category/", "/categorie-produit/",
+    "/categorie/", "/store/", "/c/",
+    "/pages/",
+]
+
+
+def _is_category_page(url: str, soup: BeautifulSoup) -> tuple[bool, list[str]]:
+    signals = []
+    path = urlparse(url.lower()).path
+
+    for pat in CATEGORY_PATH_PATTERNS:
+        if pat in path:
+            signals.append(f"cat_url:{pat}")
+            break
+
+    title_tag = soup.find("title")
+    title_text = title_tag.get_text(strip=True) if title_tag else ""
+    h1 = soup.find("h1")
+    h1_text = h1.get_text(strip=True) if h1 else ""
+    combined = f"{title_text} {h1_text}"
+
+    for pat in CATEGORY_TITLE_PATTERNS:
+        if pat.search(combined):
+            signals.append(f"cat_title:{pat.pattern[:40]}")
+            break
+
+    product_links = soup.find_all("a", href=re.compile(r"/product[s]?/|/produit/|\.html$", re.I))
+    if len(product_links) >= 5:
+        signals.append(f"many_product_links:{len(product_links)}")
+
+    product_grids = soup.find_all(class_=re.compile(r"product.?grid|product.?list|product.?card|collection.?grid", re.I))
+    if product_grids:
+        signals.append(f"product_grid_class")
+
+    return len(signals) >= 2, signals
+
+
+def _classify_page_type(url: str, soup: BeautifulSoup) -> str:
     has_proof, _ = has_purchase_proof(soup)
     article, _ = is_article_page(url, soup)
+    is_cat, _ = _is_category_page(url, soup)
 
-    if has_proof and not article:
+    if has_proof and not article and not is_cat:
         return "product"
+
+    if is_cat:
+        return "category"
 
     if article and not has_proof:
         return "article"
-
-    category_patterns = ["/collections", "/category", "/categories", "/categorie/", "/c/"]
-    for pat in category_patterns:
-        if pat in path:
-            return "category"
 
     if has_proof and article:
         return "product"
@@ -401,6 +471,9 @@ def is_product_page(url: str, html) -> tuple[bool, dict]:
     article_detected, article_reasons = is_article_page(url, soup)
     reasons["article_signals"] = article_reasons
 
+    is_cat, cat_signals = _is_category_page(url, soup)
+    reasons["category_signals"] = cat_signals
+
     page_type = _classify_page_type(url, soup)
     reasons["page_type"] = page_type
 
@@ -408,6 +481,12 @@ def is_product_page(url: str, html) -> tuple[bool, dict]:
         reasons["rejection_reason"] = f"article_page:{','.join(article_reasons)}"
         reasons["page_type"] = "article"
         logger.info(f"[PAGE_VALIDATOR] REJECTED (article) {url} => {reasons['rejection_reason']}")
+        return False, reasons
+
+    if is_cat:
+        reasons["rejection_reason"] = f"category_page:{','.join(cat_signals)}"
+        reasons["page_type"] = "category"
+        logger.info(f"[PAGE_VALIDATOR] REJECTED (category) {url} => {reasons['rejection_reason']}")
         return False, reasons
 
     if not has_proof:
