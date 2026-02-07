@@ -23,19 +23,22 @@ class BraveAPIError(Exception):
     pass
 
 SEARCH_QUERIES = [
-    "whey protein 1kg prix EUR achat",
-    "whey isolate prix fiche produit",
-    "whey hydrolysate achat en ligne",
-    "whey native francaise prix",
-    "impact whey protein myprotein prix",
-    "clear whey isolate prix achat",
-    "optimum nutrition gold standard whey prix",
-    "bulk powders whey protein prix",
-    "scitec nutrition whey protein prix",
-    "eric favre whey protein prix",
-    "foodspring whey protein prix",
-    "whey isolate sans sucralose prix",
-    "whey proteine fabrication francaise",
+    "acheter whey protein 1kg site:*.fr",
+    "whey isolate achat boutique en ligne",
+    "whey hydrolysate acheter fiche produit",
+    "whey native francaise acheter",
+    "impact whey protein myprotein achat",
+    "clear whey isolate acheter",
+    "optimum nutrition gold standard whey acheter",
+    "bulk powders whey protein acheter",
+    "scitec nutrition whey protein acheter",
+    "eric favre whey protein boutique",
+    "foodspring whey protein acheter",
+    "whey isolate sans sucralose boutique",
+    "whey proteine fabrication francaise acheter",
+    "nutrimuscle whey native acheter",
+    "protealpes whey francaise boutique",
+    "alter nutrition whey acheter",
 ]
 
 EXCLUDED_DOMAINS = [
@@ -44,11 +47,19 @@ EXCLUDED_DOMAINS = [
     "pinterest.com", "linkedin.com", "quora.com",
     "amazon.fr", "amazon.com",
     "idealo.fr", "idealo.com",
+    "decathlon.fr", "decathlon.com",
+    "doctissimo.fr", "passeportsante.net", "sante.journaldesfemmes.fr",
+    "marmiton.org", "femmeactuelle.fr", "20minutes.fr", "lequipe.fr",
+    "lefigaro.fr", "lemonde.fr", "bfmtv.com",
 ]
 
 EXCLUDED_PATH_KEYWORDS = [
-    "blog", "forum", "article", "comparatif", "avis", "guide",
-    "video", "news", "actualite",
+    "/blog/", "/forum/", "/article/", "/comparatif/", "/avis/", "/guide/",
+    "/video/", "/news/", "/actualite/", "/conseil/", "/faq/", "/aide/",
+    "/recette/", "/tutoriel/", "/dossier/", "/magazine/", "/editorial/",
+    "/top-", "/classement/", "/versus/", "/vs-",
+    "/comment-choisir", "/pourquoi-", "/difference-entre",
+    "/post/", "/category/", "/tag/",
 ]
 
 REQUEST_DELAY = 1.1
@@ -87,6 +98,20 @@ KNOWN_BRANDS = [
 ]
 
 
+PRODUCT_PATH_SIGNALS = [
+    "/produit/", "/product/", "/shop/", "/boutique/",
+    "/achat/", "/acheter/", "/proteines/",
+    "/whey", "/isolate", "/proteine",
+]
+
+NON_PRODUCT_TITLE_KEYWORDS = [
+    "comparatif", "guide", "avis", "top 10", "top 5", "meilleur",
+    "comment choisir", "quelle whey", "difference entre",
+    "classement", "versus", "vs ", "test et avis",
+    "notre selection", "selection des", "les meilleures",
+]
+
+
 def is_product_url(url: str) -> bool:
     parsed = urlparse(url)
     domain = parsed.netloc.lower()
@@ -101,6 +126,49 @@ def is_product_url(url: str) -> bool:
             return False
 
     return True
+
+
+def is_product_page(soup: BeautifulSoup, url: str) -> bool:
+    add_to_cart_patterns = [
+        re.compile(r"ajout.*panier", re.I),
+        re.compile(r"add.*cart", re.I),
+        re.compile(r"ajouter.*panier", re.I),
+        re.compile(r"acheter", re.I),
+        re.compile(r"commander", re.I),
+    ]
+    for pattern in add_to_cart_patterns:
+        btn = soup.find(["button", "a", "input"], string=pattern)
+        if btn:
+            return True
+        btn = soup.find(["button", "a", "input"], attrs={"value": pattern})
+        if btn:
+            return True
+        btn = soup.find(["button", "a"], class_=re.compile(r"add.?to.?cart|ajout.?panier|buy|acheter", re.I))
+        if btn:
+            return True
+
+    og = extract_og_meta(soup)
+    if og.get("og:type", "").lower() in ("product", "og:product", "product.item"):
+        return True
+
+    price_el = soup.find(class_=re.compile(r"price|prix|product-price|current-price", re.I))
+    product_el = soup.find(class_=re.compile(r"product-detail|product-info|product-page|fiche-produit", re.I))
+    if price_el and product_el:
+        return True
+
+    path = urlparse(url).path.lower()
+    has_product_path = any(sig in path for sig in PRODUCT_PATH_SIGNALS)
+    if has_product_path and price_el:
+        return True
+
+    title_tag = soup.find("title")
+    if title_tag:
+        title_text = title_tag.get_text(strip=True).lower()
+        for kw in NON_PRODUCT_TITLE_KEYWORDS:
+            if kw in title_text:
+                return False
+
+    return False
 
 
 def search_brave(api_key: str, query: str, count: int = 15) -> list[str]:
@@ -207,21 +275,96 @@ def parse_weight(text: str) -> float | None:
     return None
 
 
+WHEY_PRICE_MIN = 8.0
+WHEY_PRICE_MAX = 200.0
+
+
 def parse_price(value) -> float | None:
     if value is None:
         return None
     if isinstance(value, (int, float)):
         v = float(value)
-        if 0 < v < 1000:
+        if WHEY_PRICE_MIN <= v <= WHEY_PRICE_MAX:
             return v
         return None
     text = str(value).replace(",", ".").replace("\u00a0", "").replace(" ", "").strip()
     match = re.search(r"(\d+(?:\.\d+)?)", text)
     if match:
         v = float(match.group(1))
-        if 0 < v < 1000:
+        if WHEY_PRICE_MIN <= v <= WHEY_PRICE_MAX:
             return v
     return None
+
+
+def extract_best_price(soup: BeautifulSoup, jsonld: dict | None, og: dict, microdata: dict) -> float | None:
+    prices = []
+
+    if jsonld:
+        offers = jsonld.get("offers", {})
+        if isinstance(offers, list):
+            for offer in offers:
+                p = parse_price(offer.get("price"))
+                if p:
+                    prices.append(("jsonld", p))
+        elif isinstance(offers, dict):
+            p = parse_price(offers.get("price"))
+            if p:
+                prices.append(("jsonld", p))
+            low = parse_price(offers.get("lowPrice"))
+            if low:
+                prices.append(("jsonld_low", low))
+
+    og_price = parse_price(og.get("product:price:amount", ""))
+    if og_price:
+        prices.append(("og", og_price))
+
+    micro_price = parse_price(microdata.get("price", ""))
+    if micro_price:
+        prices.append(("microdata", micro_price))
+
+    old_price_classes = [
+        "old-price", "regular-price", "price--old", "price-old",
+        "was-price", "price-was", "price--crossed", "prix-barre",
+        "list-price", "compare-price",
+    ]
+    old_price_values = set()
+    for cls in old_price_classes:
+        el = soup.find(class_=re.compile(re.escape(cls), re.I))
+        if el:
+            p = parse_price(el.get_text())
+            if p:
+                old_price_values.add(p)
+
+    priority_classes = [
+        "current-price", "sale-price", "product-price", "price--current",
+        "price-new", "our-price", "final-price",
+    ]
+    for cls in priority_classes:
+        el = soup.find(class_=re.compile(re.escape(cls), re.I))
+        if el:
+            p = parse_price(el.get_text())
+            if p and p not in old_price_values:
+                prices.append(("html_priority", p))
+                break
+
+    if not prices:
+        for cls in ["price", "prix"]:
+            el = soup.find(class_=re.compile(cls, re.I))
+            if el:
+                p = parse_price(el.get_text())
+                if p and p not in old_price_values:
+                    prices.append(("html_generic", p))
+                    break
+
+    if not prices:
+        return None
+
+    source_priority = {"jsonld": 0, "jsonld_low": 1, "og": 2, "microdata": 3, "html_priority": 4, "html_generic": 5}
+    prices.sort(key=lambda x: source_priority.get(x[0], 99))
+
+    best_price = prices[0][1]
+
+    return round(best_price, 2)
 
 
 def parse_protein(text: str) -> float | None:
@@ -658,11 +801,14 @@ def extract_product_data(url: str) -> dict | None:
         soup = BeautifulSoup(response.text, "lxml")
         jsonld = extract_jsonld(soup)
         og = extract_og_meta(soup)
+
+        if not jsonld and not is_product_page(soup, url):
+            logger.info(f"Skipping non-product page: {url}")
+            return None
         microdata = extract_microdata(soup)
 
         name = ""
         brand = ""
-        price = None
         currency = "EUR"
         availability = ""
 
@@ -675,7 +821,6 @@ def extract_product_data(url: str) -> dict | None:
             if isinstance(offers, list):
                 offers = offers[0] if offers else {}
 
-            price = parse_price(offers.get("price"))
             currency = offers.get("priceCurrency", "EUR")
             availability = offers.get("availability", "")
             if availability:
@@ -690,8 +835,6 @@ def extract_product_data(url: str) -> dict | None:
             brand = og.get("product:brand", "") or microdata.get("brand", "")
         if not brand:
             brand = extract_brand_from_text(name, url)
-        if price is None:
-            price = parse_price(og.get("product:price:amount", "")) or parse_price(microdata.get("price", ""))
         if not currency or currency == "EUR":
             currency = og.get("product:price:currency", "EUR") or microdata.get("pricecurrency", "EUR")
         if not availability:
@@ -699,19 +842,7 @@ def extract_product_data(url: str) -> dict | None:
             if availability:
                 availability = availability.split("/")[-1]
 
-        if not name or price is None:
-            html_price = None
-            for cls in ["price", "product-price", "prix", "current-price", "sale-price", "regular-price"]:
-                el = soup.find(class_=re.compile(cls, re.I))
-                if el:
-                    html_price = parse_price(el.get_text())
-                    if html_price:
-                        break
-            if html_price and price is None:
-                price = html_price
-
-        if not name and price is None:
-            return None
+        price = extract_best_price(soup, jsonld, og, microdata)
 
         bad_titles = ["amazon.fr", "amazon", "decathlon", "cdiscount", "google"]
         if name and name.strip().lower() in bad_titles:
@@ -721,11 +852,25 @@ def extract_product_data(url: str) -> dict | None:
         if not name or not name.strip():
             name = "Produit inconnu"
 
+        whey_keywords = ["whey", "proteine", "protéine", "protein", "isolat", "isolate", "native", "hydrolys"]
+        name_lower = name.lower()
+        url_lower = url.lower()
+        if not any(kw in name_lower or kw in url_lower for kw in whey_keywords):
+            page_title = (soup.find("title") or soup.new_tag("title")).get_text(strip=True).lower() if soup.find("title") else ""
+            h1 = soup.find("h1")
+            h1_text = h1.get_text(strip=True).lower() if h1 else ""
+            if not any(kw in page_title or kw in h1_text for kw in whey_keywords):
+                logger.info(f"Skipping non-whey product: {name} ({url})")
+                return None
+
         weight = extract_weight_comprehensive(soup, name, jsonld)
 
         price_per_kg = None
         if price and weight and weight > 0:
             price_per_kg = round(price / weight, 2)
+            if price_per_kg > 200:
+                logger.info(f"Price per kg suspicious ({price_per_kg} EUR/kg) for {url}, keeping raw price")
+                price_per_kg = None
 
         protein_per_100g = None
         if jsonld:
