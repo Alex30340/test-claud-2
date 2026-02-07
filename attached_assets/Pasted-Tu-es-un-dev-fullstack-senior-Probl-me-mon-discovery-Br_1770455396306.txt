@@ -1,0 +1,55 @@
+Tu es un dev fullstack senior. Problème : mon discovery (Brave Search) ressort toujours les mêmes marques / mêmes domains, et je rate des marques FR comme Novoma alors qu’elles sont bonnes. Je veux un discovery “long-tail” + diversité marques + anti-duplication domaines.
+
+OBJECTIF
+Améliorer le module DISCOVERY pour obtenir un catalogue plus large et représentatif du marché FR (incluant Novoma, Nutrimuscle, Nutri&Co, etc.), sans être bloqué sur 2–3 gros sites.
+
+A) STRATÉGIE DISCOVERY (IMPORTANT)
+1) Multi-requêtes avec “intent produit” :
+   - inclure des mots clés: "ajouter au panier", "en stock", "acheter", "prix", "1kg", "2kg"
+   - exclure: -blog -forum -comparatif -guide -test -avis -pdf -category -collections -search
+
+2) Diversification par type de whey :
+   - requêtes différentes pour "whey isolate", "whey native", "whey concentrée", "whey hydrolysée"
+
+3) Diversification par marque (seed list)
+   - Maintenir une liste SEED_BRANDS = ["Novoma", "Nutrimuscle", "Nutri&Co", "Eiyolab", "Greenwhey", "Nutripure", "Foodspring", "Optigura", "Myprotein", "Bulk", "ESN", ...]
+   - Générer automatiquement des requêtes : 'whey isolate {brand} "ajouter au panier" site:.fr'
+   - Si un brand n’a aucun résultat valide => fallback: 'site:{brand-domain} whey isolate' si on connaît son domaine
+
+4) Diversification par domaine (anti répétition)
+   - Limiter à MAX_PER_DOMAIN = 2 URLs par domaine par run discovery
+   - Après MAX_PER_DOMAIN atteint => ignorer le reste du domaine et prendre d’autres domaines
+   - Objectif: obtenir 30–50 domaines uniques au lieu de 5 domaines.
+
+5) “Exploration” long tail
+   - Faire des requêtes génériques orientées ecommerce :
+     'whey isolate "€" "ajouter au panier" site:.fr -myprotein -bulk -amazon'
+   - Utiliser une liste BLOCK_DOMAINS pour éviter les géants si trop présents.
+
+B) VALIDATION PRODUIT (OBLIGATOIRE)
+Avant de garder une URL, vérifier que la page est achetable:
+- signaux: JSON-LD schema.org Offer OU présence "Ajouter au panier" / "Commander" + prix + poids
+- sinon rejet
+
+C) NORMALISATION & DEDUP
+- Dédupliquer par (brand + product_name + weight) si possible, sinon par url.
+- Stocker domain, brand, product_name.
+- Ajouter un champ discovery_source (query utilisée) pour debug.
+
+D) ENDPOINTS
+- POST /discovery/run (params: scrape_limit, max_per_domain, use_brand_seeds, block_domains)
+- GET /discovery/stats (retourne: nb domains uniques, top domains, brands détectées, brands manquantes)
+
+E) UI (optionnel mais utile)
+- Ajouter une section admin “Discovery Health”:
+  - domains uniques, marques trouvées, marques manquantes
+  - bouton “Relancer discovery avec seeds”
+
+LIVRABLE
+- Fournis le code complet des fichiers à modifier:
+  - brave_search.py : support multi-queries
+  - discovery.py : orchestrateur (rotation domains + seeds brands + blocklist)
+  - validator.py : validation page produit
+  - main.py : endpoints /discovery/run et /discovery/stats
+- Code complet, prêt à exécuter. Logs clairs.
+- Ne pas casser le refresh quotidien des offres.

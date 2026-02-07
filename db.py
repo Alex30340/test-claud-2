@@ -153,6 +153,16 @@ def init_db():
         except psycopg2.errors.DuplicateColumn:
             conn.rollback()
 
+    offer_columns = [
+        ("discovery_source", "VARCHAR(200)"),
+    ]
+    for col_name, col_type in offer_columns:
+        try:
+            cur.execute(f"ALTER TABLE offers ADD COLUMN {col_name} {col_type}")
+            conn.commit()
+        except psycopg2.errors.DuplicateColumn:
+            conn.rollback()
+
     cur.close()
     conn.close()
 
@@ -440,24 +450,28 @@ def upsert_offer(product_id: int, offer_data: dict) -> int:
         prix_par_kg = offer_data.get("prix_par_kg")
         disponibilite = offer_data.get("disponibilite")
         confidence = offer_data.get("confidence", 0.5)
+        discovery_source = offer_data.get("discovery_source")
 
         if existing:
             cur.execute(
                 """UPDATE offers
                    SET merchant = %s, prix = %s, devise = %s, poids_kg = %s,
                        prix_par_kg = %s, disponibilite = %s, confidence = %s,
+                       discovery_source = COALESCE(%s, discovery_source),
                        is_active = TRUE, fail_count = 0, last_seen = NOW(), updated_at = NOW()
                    WHERE id = %s RETURNING id""",
-                (merchant, prix, devise, poids_kg, prix_par_kg, disponibilite, confidence, existing["id"]),
+                (merchant, prix, devise, poids_kg, prix_par_kg, disponibilite, confidence,
+                 discovery_source, existing["id"]),
             )
             offer_id = cur.fetchone()["id"]
         else:
             cur.execute(
                 """INSERT INTO offers
                    (product_id, merchant, url, prix, devise, poids_kg, prix_par_kg,
-                    disponibilite, confidence)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
-                (product_id, merchant, url, prix, devise, poids_kg, prix_par_kg, disponibilite, confidence),
+                    disponibilite, confidence, discovery_source)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                (product_id, merchant, url, prix, devise, poids_kg, prix_par_kg,
+                 disponibilite, confidence, discovery_source),
             )
             offer_id = cur.fetchone()["id"]
 

@@ -4,7 +4,11 @@ import os
 import html as html_module
 from datetime import datetime
 
-from scraper import scrape_products, extract_product_data, BraveAPIError, SEARCH_QUERIES, run_discovery, run_refresh
+from scraper import (
+    scrape_products, extract_product_data, BraveAPIError, SEARCH_QUERIES,
+    run_discovery, run_refresh, get_discovery_stats_from_db,
+    SEED_BRANDS, BLOCK_DOMAINS, MAX_PER_DOMAIN,
+)
 from scoring import calculate_price_score
 from db import (
     init_db, create_user, get_user_by_email,
@@ -1320,11 +1324,27 @@ def page_admin():
 
     with disc_col:
         st.subheader("🔍 Discovery")
-        st.markdown("Recherche de nouveaux produits whey via Brave Search et extraction des donnees.")
+        st.markdown("Recherche de nouveaux produits whey via Brave Search avec diversification par marque et domaine.")
 
         if not api_key:
             st.warning("Cle API Brave Search non configuree.")
         else:
+            with st.expander("Parametres Discovery", expanded=False):
+                disc_max_per_domain = st.number_input(
+                    "Max URLs par domaine", min_value=1, max_value=10,
+                    value=MAX_PER_DOMAIN, key="disc_max_domain"
+                )
+                disc_use_seeds = st.checkbox("Utiliser les marques seed", value=True, key="disc_seeds")
+                disc_scrape_limit = st.number_input(
+                    "Limite URLs a scraper", min_value=10, max_value=500,
+                    value=200, key="disc_limit"
+                )
+                disc_block_str = st.text_input(
+                    "Domaines bloques (separes par virgule)",
+                    value=", ".join(BLOCK_DOMAINS),
+                    key="disc_block"
+                )
+
             if st.button("🚀 Lancer un Discovery", type="primary", use_container_width=True, key="btn_discovery"):
                 status_container = st.empty()
                 progress_bar = st.progress(0)
@@ -1338,21 +1358,33 @@ def page_admin():
                 def disc_status(msg):
                     status_container.info(msg)
 
+                block_list = [d.strip() for d in disc_block_str.split(",") if d.strip()]
+
                 try:
                     with st.spinner("Discovery en cours..."):
                         result = run_discovery(
                             api_key=api_key,
                             progress_callback=disc_progress,
                             status_callback=disc_status,
+                            max_per_domain=disc_max_per_domain,
+                            use_brand_seeds=disc_use_seeds,
+                            block_domains=block_list,
+                            scrape_limit=disc_scrape_limit,
                         )
                     progress_bar.empty()
                     detail_text.empty()
-                    status_container.success(
-                        f"✅ Discovery termine ! "
-                        f"Produits trouves: {result.get('products_found', 0)}, "
-                        f"Offres mises a jour: {result.get('offers_updated', 0)}, "
+
+                    domains_found = result.get("domains_found", [])
+                    brands_missing = result.get("brands_missing", [])
+                    msg = (
+                        f"Produits: {result.get('products_found', 0)}, "
+                        f"Offres: {result.get('offers_created', 0)}, "
+                        f"Domaines: {len(domains_found)}, "
                         f"Erreurs: {result.get('errors', 0)}"
                     )
+                    if brands_missing:
+                        msg += f"\nMarques manquantes: {', '.join(sorted(brands_missing)[:10])}"
+                    status_container.success(f"✅ Discovery termine !\n{msg}")
                 except Exception as e:
                     progress_bar.empty()
                     detail_text.empty()
@@ -1426,6 +1458,59 @@ def page_admin():
             use_container_width=True,
             hide_index=True,
         )
+
+    st.divider()
+    st.subheader("🏥 Discovery Health")
+    st.markdown("Vue d'ensemble de la couverture du catalogue : domaines, marques detectees, marques manquantes.")
+
+    try:
+        disc_stats = get_discovery_stats_from_db()
+
+        h1, h2, h3 = st.columns(3)
+        with h1:
+            st.metric("Domaines uniques", disc_stats["unique_domains"])
+        with h2:
+            st.metric("Marques seed trouvees", f"{len(disc_stats['brands_in_catalog'])}/{disc_stats['total_seed_brands']}")
+        with h3:
+            st.metric("Marques manquantes", len(disc_stats["brands_missing"]))
+
+        if disc_stats["brands_missing"]:
+            st.warning(f"Marques seed non trouvees dans le catalogue : **{', '.join(disc_stats['brands_missing'])}**")
+
+        if disc_stats["brands_in_catalog"]:
+            st.success(f"Marques seed presentes : {', '.join(disc_stats['brands_in_catalog'])}")
+
+        col_dom, col_brands = st.columns(2)
+
+        with col_dom:
+            st.markdown("**Top domaines (offres actives)**")
+            if disc_stats["domain_stats"]:
+                dom_data = []
+                for d in disc_stats["domain_stats"]:
+                    avg_conf = d.get("avg_confidence")
+                    dom_data.append({
+                        "Domaine": d["merchant"],
+                        "Offres": d["offer_count"],
+                        "Produits": d["product_count"],
+                        "Confiance moy.": f"{avg_conf:.0%}" if avg_conf else "—",
+                    })
+                st.dataframe(pd.DataFrame(dom_data), use_container_width=True, hide_index=True)
+            else:
+                st.info("Aucune offre active.")
+
+        with col_brands:
+            st.markdown("**Marques dans le catalogue**")
+            if disc_stats["brand_details"]:
+                brand_data = [{
+                    "Marque": b["brand"].title(),
+                    "Produits": b["product_count"],
+                } for b in disc_stats["brand_details"]]
+                st.dataframe(pd.DataFrame(brand_data), use_container_width=True, hide_index=True)
+            else:
+                st.info("Aucune marque detectee.")
+
+    except Exception as e:
+        st.error(f"Erreur chargement des stats Discovery Health : {e}")
 
 
 # ── ROUTER ──

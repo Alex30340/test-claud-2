@@ -19,7 +19,7 @@ Application SaaS Python/Streamlit pour comparer les proteines whey en France. Mo
 - `scans` - Historique des scans par utilisateur (legacy, toujours fonctionnel)
 - `scan_items` - Produits extraits rattaches a un scan (legacy)
 - `products` - Catalogue stable (name, brand, type_whey, nutrition, ingredients, scores, origin, normalized_key pour dedup)
-- `offers` - Offres marchands volatiles (product_id FK, merchant, url, prix, poids_kg, prix_par_kg, confidence, fail_count, is_active)
+- `offers` - Offres marchands volatiles (product_id FK, merchant, url, prix, poids_kg, prix_par_kg, confidence, fail_count, is_active, discovery_source)
 - `pipeline_runs` - Historique des executions Discovery/Refresh (run_type, status, counts, timestamps)
 
 ### Product/Offer Architecture
@@ -29,8 +29,20 @@ Application SaaS Python/Streamlit pour comparer les proteines whey en France. Mo
 - Deduplication par `normalized_key` (brand + name normalise, sans poids)
 
 ### Pipelines
-- **Discovery** (hebdomadaire) : Brave Search -> URLs candidates -> extraction parallele -> Product + Offer avec confidence -> filtre confidence < 0.2
+- **Discovery** (hebdomadaire) : Multi-requetes Brave Search (par type whey, par marque seed, long-tail) -> max_per_domain filtering -> extraction parallele -> Product + Offer avec confidence + discovery_source -> filtre confidence < 0.2
+  - Parametres configurables : max_per_domain (defaut 2), use_brand_seeds, block_domains, scrape_limit (defaut 200)
+  - Retourne stats : domains_found, brands_found, brands_missing
 - **Refresh** (quotidien) : re-scrape des Offers actives (confidence >= 0.3) -> mise a jour prix/dispo -> mark failed apres 3 echecs
+
+### Discovery Strategy
+- **SEED_BRANDS** : 28 marques FR/EU avec domaines connus (Novoma, Nutrimuscle, Nutri&Co, Eiyolab, Greenwhey, Nutripure, Foodspring, etc.)
+- **Multi-requetes** : par type whey (isolate, native, concentree, hydrolysee) x intent keywords ("ajouter au panier", "en stock", "acheter", "prix")
+- **Brand seeds** : requetes automatiques "whey {brand} acheter site:.fr" + "site:{domain} whey" pour chaque marque
+- **Long-tail** : requetes generiques orientees ecommerce avec exclusion des gros domaines
+- **MAX_PER_DOMAIN** = 2 : limite le nombre d'URLs par domaine par run pour diversifier
+- **BLOCK_DOMAINS** : liste de domaines a exclure (myprotein, bulk, amazon, decathlon)
+- **SEARCH_EXCLUSIONS** : -blog -forum -comparatif -guide -test -avis -pdf -category -collections -search
+- **Discovery Health** : section admin montrant domaines uniques, marques trouvees/manquantes, top domaines
 
 ### Confidence Scoring (0-1)
 Score composite base sur :

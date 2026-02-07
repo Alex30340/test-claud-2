@@ -41,6 +41,90 @@ SEARCH_QUERIES = [
     "alter nutrition whey acheter",
 ]
 
+SEED_BRANDS = {
+    "Novoma": "novoma.com",
+    "Nutrimuscle": "nutrimuscle.com",
+    "Nutri&Co": "nutriandco.com",
+    "Eiyolab": "eiyolab.com",
+    "Greenwhey": "greenwhey.fr",
+    "Nutripure": "nutripure.fr",
+    "Foodspring": "foodspring.fr",
+    "Optigura": "optigura.fr",
+    "Myprotein": "myprotein.fr",
+    "Bulk": "bulk.com",
+    "ESN": "esn.com",
+    "Eric Favre": "ericfavre.com",
+    "Protealpes": "protealpes.com",
+    "Alter Nutrition": "alternutrition.com",
+    "The Protein Works": "fr.theproteinworks.com",
+    "Scitec Nutrition": "scitecnutrition.com",
+    "Optimum Nutrition": None,
+    "Biotech USA": "biotechusa.fr",
+    "QNT": "qnt.com",
+    "Olimp": "olimp.fr",
+    "Nu3": "nu3.fr",
+    "Prozis": "prozis.com",
+    "Harder": "harder.fr",
+    "EAFIT": "eafit.com",
+    "Apurna": None,
+    "Dymatize": None,
+    "Iron Factory": None,
+    "Impact Nutrition": None,
+}
+
+BLOCK_DOMAINS = [
+    "myprotein.fr", "myprotein.com",
+    "bulk.com",
+    "amazon.fr", "amazon.com",
+    "decathlon.fr",
+]
+
+MAX_PER_DOMAIN = 2
+
+WHEY_TYPE_QUERIES = ["whey isolate", "whey native", "whey concentree", "whey hydrolysee"]
+
+INTENT_KEYWORDS = ['"ajouter au panier"', '"en stock"', '"acheter"', '"prix"']
+
+SEARCH_EXCLUSIONS = "-blog -forum -comparatif -guide -test -avis -pdf -category -collections -search"
+
+
+def generate_discovery_queries(use_brand_seeds: bool = True, block_domains: list[str] | None = None) -> list[dict]:
+    queries = []
+    block = block_domains or []
+    block_str = " ".join(f"-site:{d}" for d in block) if block else ""
+
+    for wtype in WHEY_TYPE_QUERIES:
+        for intent in INTENT_KEYWORDS:
+            q = f'{wtype} {intent} site:.fr {SEARCH_EXCLUSIONS}'
+            if block_str:
+                q += f" {block_str}"
+            queries.append({"query": q, "source": f"type:{wtype}"})
+
+    if use_brand_seeds:
+        for brand, domain in SEED_BRANDS.items():
+            q = f'whey "{brand}" acheter site:.fr {SEARCH_EXCLUSIONS}'
+            queries.append({"query": q, "source": f"brand:{brand}"})
+
+            if domain:
+                q2 = f'site:{domain} whey'
+                queries.append({"query": q2, "source": f"brand_site:{brand}"})
+
+    longtail_queries = [
+        f'whey isolate "€" "ajouter au panier" site:.fr {block_str}',
+        f'whey native francaise "acheter" site:.fr {block_str}',
+        f'proteine whey "en stock" "1kg" site:.fr {SEARCH_EXCLUSIONS} {block_str}',
+        f'whey isolate "2kg" acheter site:.fr {SEARCH_EXCLUSIONS} {block_str}',
+        f'clear whey isolate acheter site:.fr {SEARCH_EXCLUSIONS} {block_str}',
+        f'whey sans sucralose acheter site:.fr {SEARCH_EXCLUSIONS} {block_str}',
+    ]
+    for q in longtail_queries:
+        queries.append({"query": q.strip(), "source": "longtail"})
+
+    for q_text in SEARCH_QUERIES:
+        queries.append({"query": q_text, "source": "legacy"})
+
+    return queries
+
 EXCLUDED_DOMAINS = [
     "youtube.com", "facebook.com", "instagram.com", "twitter.com", "x.com",
     "tiktok.com", "reddit.com", "forum", "blog", "wikipedia.org",
@@ -1103,33 +1187,103 @@ def scrape_products(api_key: str, progress_callback=None, status_callback=None) 
     return products
 
 
-def run_discovery(api_key: str, progress_callback=None, status_callback=None) -> dict:
+def _search_discovery_queries(api_key: str, discovery_queries: list[dict],
+                              max_per_domain: int = MAX_PER_DOMAIN,
+                              progress_callback=None) -> list[dict]:
+    all_urls = []
+    seen = set()
+    domain_counts: dict[str, int] = {}
+    url_sources: dict[str, str] = {}
+
+    for i, qdata in enumerate(discovery_queries):
+        query = qdata["query"]
+        source = qdata["source"]
+
+        if progress_callback:
+            progress_callback(i, len(discovery_queries), f"Requete: {source}")
+
+        urls = search_brave(api_key, query)
+        for u in urls:
+            normalized = u.rstrip("/").lower()
+            if normalized in seen:
+                continue
+
+            domain = urlparse(u).netloc.replace("www.", "").lower()
+
+            if domain_counts.get(domain, 0) >= max_per_domain:
+                continue
+
+            seen.add(normalized)
+            domain_counts[domain] = domain_counts.get(domain, 0) + 1
+            all_urls.append({"url": u, "source": source, "domain": domain})
+            url_sources[normalized] = source
+
+        time.sleep(REQUEST_DELAY)
+
+    return all_urls
+
+
+def run_discovery(api_key: str, progress_callback=None, status_callback=None,
+                  max_per_domain: int = MAX_PER_DOMAIN,
+                  use_brand_seeds: bool = True,
+                  block_domains: list[str] | None = None,
+                  scrape_limit: int = 200) -> dict:
     from db import upsert_product, upsert_offer, create_pipeline_run, update_pipeline_run
 
     run_id = create_pipeline_run("discovery")
-    stats = {"products_found": 0, "offers_created": 0, "errors": 0, "skipped": 0}
+    effective_block = block_domains if block_domains is not None else BLOCK_DOMAINS
+    stats = {
+        "products_found": 0,
+        "offers_created": 0,
+        "errors": 0,
+        "skipped": 0,
+        "domains_found": set(),
+        "brands_found": set(),
+        "brands_missing": set(),
+        "domain_counts": {},
+    }
 
     try:
         if status_callback:
-            status_callback("Recherche de produits via Brave Search...")
+            status_callback("Generation des requetes discovery...")
 
-        urls = search_all_queries(api_key, progress_callback)
+        discovery_queries = generate_discovery_queries(
+            use_brand_seeds=use_brand_seeds,
+            block_domains=effective_block,
+        )
 
         if status_callback:
-            status_callback(f"{len(urls)} URLs candidates. Extraction en parallele...")
+            status_callback(f"{len(discovery_queries)} requetes a executer via Brave Search...")
+
+        url_entries = _search_discovery_queries(
+            api_key, discovery_queries,
+            max_per_domain=max_per_domain,
+            progress_callback=progress_callback,
+        )
+
+        if scrape_limit and len(url_entries) > scrape_limit:
+            url_entries = url_entries[:scrape_limit]
+
+        if status_callback:
+            unique_domains = len(set(e["domain"] for e in url_entries))
+            status_callback(f"{len(url_entries)} URLs candidates ({unique_domains} domaines). Extraction...")
 
         completed = 0
-        total = len(urls)
+        total = len(url_entries)
+        url_source_map = {e["url"]: e["source"] for e in url_entries}
+        urls_to_scrape = [e["url"] for e in url_entries]
 
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-            futures = {executor.submit(_extract_with_log, url): url for url in urls}
+            futures = {executor.submit(_extract_with_log, url): url for url in urls_to_scrape}
 
             for future in as_completed(futures):
                 completed += 1
                 url = futures[future]
+                source = url_source_map.get(url, "unknown")
+                domain = urlparse(url).netloc.replace("www.", "").lower()
 
                 if progress_callback:
-                    progress_callback(completed, total, f"Extraction: {urlparse(url).netloc}")
+                    progress_callback(completed, total, f"Extraction: {domain}")
 
                 result = future.result()
                 if result is None:
@@ -1146,22 +1300,44 @@ def run_discovery(api_key: str, progress_callback=None, status_callback=None) ->
 
                     product_data, offer_data = split_product_offer(result)
                     product_data["needs_review"] = confidence < 0.5
+                    offer_data["discovery_source"] = source
 
                     product_id = upsert_product(product_data)
                     upsert_offer(product_id, offer_data)
 
                     stats["products_found"] += 1
                     stats["offers_created"] += 1
+                    stats["domains_found"].add(domain)
+                    stats["domain_counts"][domain] = stats["domain_counts"].get(domain, 0) + 1
+
+                    brand = result.get("marque", "").strip()
+                    if brand:
+                        stats["brands_found"].add(brand.lower())
+
                 except Exception as e:
                     logger.warning(f"Error saving product/offer for {url}: {e}")
                     stats["errors"] += 1
+
+        seed_brands_lower = {b.lower() for b in SEED_BRANDS.keys()}
+        stats["brands_missing"] = seed_brands_lower - stats["brands_found"]
+
+        stats["domains_found"] = list(stats["domains_found"])
+        stats["brands_found"] = list(stats["brands_found"])
+        stats["brands_missing"] = list(stats["brands_missing"])
+
+        details = (
+            f"URLs scannees: {total}, Ignores: {stats['skipped']}, "
+            f"Domaines uniques: {len(stats['domains_found'])}, "
+            f"Marques trouvees: {len(stats['brands_found'])}, "
+            f"Marques manquantes: {len(stats['brands_missing'])} ({', '.join(stats['brands_missing'][:10])})"
+        )
 
         update_pipeline_run(
             run_id, "completed",
             products_found=stats["products_found"],
             offers_updated=stats["offers_created"],
             errors=stats["errors"],
-            details=f"URLs scannees: {total}, Ignores: {stats['skipped']}",
+            details=details,
         )
 
     except Exception as e:
@@ -1170,6 +1346,54 @@ def run_discovery(api_key: str, progress_callback=None, status_callback=None) ->
         raise
 
     return stats
+
+
+def get_discovery_stats_from_db() -> dict:
+    from db import get_connection
+    import psycopg2.extras
+
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("""
+            SELECT o.merchant, COUNT(*) AS offer_count, 
+                   COUNT(DISTINCT o.product_id) AS product_count,
+                   AVG(o.confidence) AS avg_confidence
+            FROM offers o
+            WHERE o.is_active = TRUE
+            GROUP BY o.merchant
+            ORDER BY offer_count DESC
+        """)
+        domain_stats = [dict(r) for r in cur.fetchall()]
+
+        cur.execute("""
+            SELECT LOWER(p.brand) AS brand, COUNT(*) AS product_count
+            FROM products p
+            WHERE p.brand IS NOT NULL AND p.brand != ''
+            GROUP BY LOWER(p.brand)
+            ORDER BY product_count DESC
+        """)
+        brand_rows = [dict(r) for r in cur.fetchall()]
+        brands_in_db = {r["brand"] for r in brand_rows}
+
+        seed_brands_lower = {b.lower() for b in SEED_BRANDS.keys()}
+        brands_missing = seed_brands_lower - brands_in_db
+        brands_found = seed_brands_lower & brands_in_db
+
+        cur.execute("SELECT COUNT(DISTINCT merchant) AS cnt FROM offers WHERE is_active = TRUE")
+        unique_domains = cur.fetchone()["cnt"]
+
+        return {
+            "unique_domains": unique_domains,
+            "domain_stats": domain_stats[:20],
+            "brands_in_catalog": sorted(brands_found),
+            "brands_missing": sorted(brands_missing),
+            "brand_details": brand_rows[:30],
+            "total_seed_brands": len(SEED_BRANDS),
+        }
+    finally:
+        cur.close()
+        conn.close()
 
 
 def refresh_offer_price(url: str) -> dict | None:
