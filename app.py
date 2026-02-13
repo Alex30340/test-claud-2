@@ -53,19 +53,19 @@ html, body, [class*="st-"] {
 }
 
 .stApp {
-    background: radial-gradient(ellipse at 20% 50%, #131b2e 0%, #0d1321 40%, #0a0e1a 70%, #080b14 100%) !important;
+    background: radial-gradient(ellipse at 50% 25%, #1a1b3b 0%, #121732 25%, #0e1024 50%, #090c1b 80%, #080a18 100%) !important;
 }
 
 .stMainBlockContainer {
-    background: linear-gradient(160deg, rgba(13, 19, 33, 0.4) 0%, rgba(10, 14, 26, 0.6) 50%, rgba(8, 11, 20, 0.8) 100%) !important;
+    background: transparent !important;
     border-radius: 20px !important;
     margin: 8px !important;
     padding: 24px 32px !important;
-    border: 1px solid rgba(74, 158, 237, 0.08) !important;
+    border: none !important;
 }
 
 section[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #0c1120 0%, #111827 100%) !important;
+    background: linear-gradient(180deg, #0e1028 0%, #0c0f22 100%) !important;
     border-right: 1px solid rgba(74, 158, 237, 0.15) !important;
 }
 
@@ -1479,11 +1479,11 @@ def render_sidebar():
     current_page = st.session_state.page
     with st.sidebar:
         if LOGO_B64:
-            st.html(f"""
+            st.markdown(f"""
             <div class='sidebar-logo'>
-                <img src='data:image/png;base64,{LOGO_B64}' style='height:44px;width:auto;' />
+                <img src='data:image/png;base64,{LOGO_B64}' style='height:44px;width:auto;mix-blend-mode:lighten;' />
             </div>
-            """)
+            """, unsafe_allow_html=True)
         else:
             st.html("""
             <div class='sidebar-logo'>
@@ -1532,14 +1532,14 @@ def render_sidebar():
 
 def page_login():
     if LOGO_B64:
-        st.html(f"""
+        st.markdown(f"""
         <div style='text-align:center;padding:40px 0 10px 0;'>
-            <img src='data:image/png;base64,{LOGO_B64}' style='height:160px;width:auto;' />
+            <img src='data:image/png;base64,{LOGO_B64}' style='height:160px;width:auto;mix-blend-mode:lighten;' />
         </div>
         <div style='text-align:center;color:#6b85b0;font-size:1em;margin-bottom:36px;letter-spacing:0.3px;'>
             Comparateur de proteines whey en France
         </div>
-        """)
+        """, unsafe_allow_html=True)
     else:
         st.html("""
         <div class='login-header'>
