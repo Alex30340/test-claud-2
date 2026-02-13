@@ -53,11 +53,25 @@ html, body, [class*="st-"] {
 }
 
 .stApp {
-    background: radial-gradient(ellipse at 50% 25%, #1a1b3b 0%, #121732 25%, #0e1024 50%, #090c1b 80%, #080a18 100%) !important;
+    background: radial-gradient(ellipse at 50% 18%, #2a2b55 0%, #1e2045 15%, #151838 30%, #0e1028 50%, #090c1b 75%, #080a18 100%) !important;
+}
+
+.stApp > header,
+[data-testid="stHeader"] {
+    background: transparent !important;
+}
+
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"],
+.main,
+.block-container,
+[data-testid="stAppViewBlockContainer"],
+[data-testid="stVerticalBlock"],
+.stMainBlockContainer {
+    background: transparent !important;
 }
 
 .stMainBlockContainer {
-    background: transparent !important;
     border-radius: 20px !important;
     margin: 8px !important;
     padding: 24px 32px !important;
@@ -1481,7 +1495,7 @@ def render_sidebar():
         if LOGO_B64:
             st.markdown(f"""
             <div class='sidebar-logo'>
-                <img src='data:image/png;base64,{LOGO_B64}' style='height:44px;width:auto;mix-blend-mode:lighten;' />
+                <img src='data:image/png;base64,{LOGO_B64}' style='height:44px;width:auto;' />
             </div>
             """, unsafe_allow_html=True)
         else:
@@ -1534,7 +1548,7 @@ def page_login():
     if LOGO_B64:
         st.markdown(f"""
         <div style='text-align:center;padding:40px 0 10px 0;'>
-            <img src='data:image/png;base64,{LOGO_B64}' style='height:160px;width:auto;mix-blend-mode:lighten;' />
+            <img src='data:image/png;base64,{LOGO_B64}' style='height:160px;width:auto;' />
         </div>
         <div style='text-align:center;color:#6b85b0;font-size:1em;margin-bottom:36px;letter-spacing:0.3px;'>
             Comparateur de proteines whey en France
