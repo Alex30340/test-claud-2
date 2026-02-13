@@ -23,22 +23,345 @@ init_db()
 
 st.set_page_config(
     page_title="ProteinScan - Comparateur Whey",
-    page_icon="💪",
+    page_icon="🧪",
     layout="wide",
 )
 
-CARD_CSS = """
+GLOBAL_CSS = """
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+html, body, [class*="st-"] {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+}
+
+.stApp {
+    background: linear-gradient(135deg, #0a0e1a 0%, #0d1321 40%, #111827 100%) !important;
+}
+
+section[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #0c1120 0%, #111827 100%) !important;
+    border-right: 1px solid rgba(74, 158, 237, 0.15) !important;
+}
+
+section[data-testid="stSidebar"] .stMarkdown h1,
+section[data-testid="stSidebar"] .stMarkdown h2,
+section[data-testid="stSidebar"] .stMarkdown h3 {
+    color: #e2e8f0 !important;
+}
+
+div[data-testid="stMetric"] {
+    background: linear-gradient(135deg, rgba(17, 24, 39, 0.8), rgba(15, 20, 35, 0.6)) !important;
+    border: 1px solid rgba(74, 158, 237, 0.15) !important;
+    border-radius: 12px !important;
+    padding: 16px 20px !important;
+}
+
+div[data-testid="stMetric"] label {
+    color: #8b9dc3 !important;
+    font-size: 0.8em !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+}
+
+div[data-testid="stMetric"] [data-testid="stMetricValue"] {
+    color: #e2e8f0 !important;
+    font-weight: 700 !important;
+}
+
+.stButton > button {
+    border-radius: 10px !important;
+    font-weight: 600 !important;
+    font-size: 0.9em !important;
+    transition: all 0.3s ease !important;
+    border: 1px solid rgba(74, 158, 237, 0.3) !important;
+    background: linear-gradient(135deg, rgba(74, 158, 237, 0.15), rgba(59, 130, 246, 0.1)) !important;
+    color: #4a9eed !important;
+}
+
+.stButton > button:hover {
+    background: linear-gradient(135deg, rgba(74, 158, 237, 0.3), rgba(59, 130, 246, 0.2)) !important;
+    border-color: rgba(74, 158, 237, 0.5) !important;
+    box-shadow: 0 4px 15px rgba(74, 158, 237, 0.2) !important;
+    transform: translateY(-1px) !important;
+}
+
+.stButton > button[kind="primary"] {
+    background: linear-gradient(135deg, #2563eb, #3b82f6) !important;
+    color: white !important;
+    border: 1px solid rgba(59, 130, 246, 0.5) !important;
+    box-shadow: 0 2px 10px rgba(37, 99, 235, 0.3) !important;
+}
+
+.stButton > button[kind="primary"]:hover {
+    background: linear-gradient(135deg, #1d4ed8, #2563eb) !important;
+    box-shadow: 0 4px 20px rgba(37, 99, 235, 0.4) !important;
+}
+
+div[data-testid="stForm"] {
+    background: linear-gradient(135deg, rgba(17, 24, 39, 0.6), rgba(15, 20, 35, 0.4)) !important;
+    border: 1px solid rgba(74, 158, 237, 0.15) !important;
+    border-radius: 14px !important;
+    padding: 24px !important;
+}
+
+.stTextInput > div > div > input,
+.stTextArea > div > div > textarea,
+.stSelectbox > div > div {
+    background: rgba(10, 14, 26, 0.6) !important;
+    border: 1px solid rgba(74, 158, 237, 0.2) !important;
+    border-radius: 10px !important;
+    color: #e2e8f0 !important;
+}
+
+.stTextInput > div > div > input:focus,
+.stTextArea > div > div > textarea:focus {
+    border-color: #4a9eed !important;
+    box-shadow: 0 0 0 2px rgba(74, 158, 237, 0.15) !important;
+}
+
+div[data-testid="stExpander"] {
+    background: rgba(17, 24, 39, 0.5) !important;
+    border: 1px solid rgba(74, 158, 237, 0.12) !important;
+    border-radius: 12px !important;
+}
+
+.stDataFrame {
+    border-radius: 12px !important;
+    overflow: hidden !important;
+}
+
+.stTabs [data-baseweb="tab-list"] {
+    gap: 8px !important;
+    background: rgba(17, 24, 39, 0.4) !important;
+    border-radius: 12px !important;
+    padding: 4px !important;
+}
+
+.stTabs [data-baseweb="tab"] {
+    border-radius: 8px !important;
+    color: #8b9dc3 !important;
+    font-weight: 500 !important;
+}
+
+.stTabs [aria-selected="true"] {
+    background: rgba(74, 158, 237, 0.2) !important;
+    color: #4a9eed !important;
+}
+
+hr {
+    border-color: rgba(74, 158, 237, 0.12) !important;
+}
+
+.stProgress > div > div > div {
+    background: linear-gradient(90deg, #2563eb, #4a9eed) !important;
+    border-radius: 10px !important;
+}
+
+div[data-testid="stSlider"] > div > div {
+    color: #4a9eed !important;
+}
+
+.stDownloadButton > button {
+    background: linear-gradient(135deg, rgba(74, 158, 237, 0.12), rgba(59, 130, 246, 0.08)) !important;
+    border: 1px solid rgba(74, 158, 237, 0.25) !important;
+    color: #4a9eed !important;
+    border-radius: 10px !important;
+}
+
+.stDownloadButton > button:hover {
+    background: linear-gradient(135deg, rgba(74, 158, 237, 0.25), rgba(59, 130, 246, 0.15)) !important;
+}
+
+div.stAlert {
+    border-radius: 10px !important;
+}
+
+.sidebar-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0 16px 0;
+    margin-bottom: 8px;
+    border-bottom: 1px solid rgba(74, 158, 237, 0.15);
+}
+
+.sidebar-logo-icon {
+    font-size: 1.8em;
+    background: linear-gradient(135deg, #2563eb, #4a9eed);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.sidebar-logo-text {
+    font-size: 1.4em;
+    font-weight: 800;
+    color: #e2e8f0;
+    letter-spacing: -0.5px;
+}
+
+.sidebar-user {
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(74, 158, 237, 0.05));
+    border: 1px solid rgba(74, 158, 237, 0.15);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin: 12px 0 16px 0;
+}
+
+.sidebar-user-name {
+    font-weight: 700;
+    font-size: 1em;
+    color: #e2e8f0;
+}
+
+.sidebar-user-email {
+    font-size: 0.8em;
+    color: #8b9dc3;
+    margin-top: 2px;
+}
+
+.sidebar-user-plan {
+    font-size: 0.78em;
+    color: #4a9eed;
+    font-weight: 600;
+    margin-top: 6px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.page-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.page-header-icon {
+    font-size: 1.6em;
+    background: linear-gradient(135deg, #2563eb, #4a9eed);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.page-header-title {
+    font-size: 1.8em;
+    font-weight: 800;
+    color: #e2e8f0;
+    letter-spacing: -0.5px;
+}
+
+.page-subtitle {
+    color: #8b9dc3;
+    font-size: 0.95em;
+    margin-bottom: 20px;
+}
+
+.stat-card {
+    background: linear-gradient(135deg, rgba(17, 24, 39, 0.8), rgba(15, 20, 35, 0.5));
+    border: 1px solid rgba(74, 158, 237, 0.15);
+    border-radius: 14px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+}
+
+.stat-card-label {
+    font-size: 0.75em;
+    color: #8b9dc3;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+}
+
+.stat-card-value {
+    font-size: 1.8em;
+    font-weight: 800;
+    color: #e2e8f0;
+}
+
+.scan-row {
+    background: linear-gradient(135deg, rgba(17, 24, 39, 0.6), rgba(15, 20, 35, 0.3));
+    border: 1px solid rgba(74, 158, 237, 0.1);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.scan-row-date {
+    color: #e2e8f0;
+    font-size: 0.9em;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.scan-row-count {
+    color: #f59e0b;
+    font-size: 0.9em;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.login-container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding-top: 40px;
+}
+
+.login-header {
+    text-align: center;
+    margin-bottom: 40px;
+}
+
+.login-logo {
+    font-size: 3em;
+    margin-bottom: 8px;
+    background: linear-gradient(135deg, #2563eb, #4a9eed);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.login-title {
+    font-size: 2.2em;
+    font-weight: 800;
+    color: #e2e8f0;
+    margin-bottom: 4px;
+}
+
+.login-subtitle {
+    font-size: 1em;
+    color: #8b9dc3;
+}
+
+.login-plans {
+    text-align: center;
+    margin-top: 30px;
+    padding: 16px 24px;
+    background: linear-gradient(135deg, rgba(17, 24, 39, 0.5), rgba(15, 20, 35, 0.3));
+    border: 1px solid rgba(74, 158, 237, 0.12);
+    border-radius: 12px;
+    color: #8b9dc3;
+    font-size: 0.9em;
+}
+
 .ps-card {
-    border: 1px solid rgba(100,100,120,0.3);
+    border: 1px solid rgba(74, 158, 237, 0.12);
     border-radius: 14px;
     padding: 18px 22px;
     margin-bottom: 12px;
-    background: linear-gradient(135deg, rgba(25,25,35,0.6), rgba(15,15,25,0.3));
-    transition: box-shadow 0.2s;
+    background: linear-gradient(135deg, rgba(17, 24, 39, 0.7), rgba(15, 20, 35, 0.4));
+    transition: all 0.3s ease;
 }
 .ps-card:hover {
-    box-shadow: 0 4px 20px rgba(100,100,255,0.08);
+    border-color: rgba(74, 158, 237, 0.25);
+    box-shadow: 0 4px 20px rgba(74, 158, 237, 0.08);
 }
 .ps-rank {
     font-size: 1.6em;
@@ -47,17 +370,17 @@ CARD_CSS = """
     line-height: 1.1;
 }
 .ps-stars {
-    color: #f1c40f;
+    color: #f59e0b;
     font-size: 1.3em;
     letter-spacing: 1px;
 }
 .ps-stars-sm {
-    color: #f1c40f;
+    color: #f59e0b;
     font-size: 0.95em;
 }
 .ps-score-num {
     font-size: 0.85em;
-    color: #aaa;
+    color: #8b9dc3;
     margin-left: 4px;
 }
 .ps-title {
@@ -65,10 +388,11 @@ CARD_CSS = """
     font-weight: 700;
     margin-bottom: 2px;
     line-height: 1.3;
+    color: #e2e8f0;
 }
 .ps-brand {
     font-size: 0.85em;
-    color: #999;
+    color: #8b9dc3;
 }
 .ps-badge {
     display: inline-block;
@@ -79,17 +403,17 @@ CARD_CSS = """
     margin: 2px 3px;
     line-height: 1.5;
 }
-.ps-badge-green { background: rgba(46,204,113,0.18); color: #2ecc71; border: 1px solid rgba(46,204,113,0.3); }
-.ps-badge-blue { background: rgba(52,152,219,0.18); color: #3498db; border: 1px solid rgba(52,152,219,0.3); }
-.ps-badge-gold { background: rgba(241,196,15,0.18); color: #f1c40f; border: 1px solid rgba(241,196,15,0.3); }
-.ps-badge-red { background: rgba(231,76,60,0.18); color: #e74c3c; border: 1px solid rgba(231,76,60,0.3); }
-.ps-badge-gray { background: rgba(150,150,160,0.15); color: #999; border: 1px solid rgba(150,150,160,0.3); }
-.ps-badge-purple { background: rgba(155,89,182,0.18); color: #9b59b6; border: 1px solid rgba(155,89,182,0.3); }
-.ps-badge-orange { background: rgba(243,156,18,0.18); color: #f39c12; border: 1px solid rgba(243,156,18,0.3); }
+.ps-badge-green { background: rgba(46,204,113,0.15); color: #34d399; border: 1px solid rgba(46,204,113,0.25); }
+.ps-badge-blue { background: rgba(74,158,237,0.15); color: #4a9eed; border: 1px solid rgba(74,158,237,0.25); }
+.ps-badge-gold { background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.25); }
+.ps-badge-red { background: rgba(239,68,68,0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.25); }
+.ps-badge-gray { background: rgba(148,163,184,0.12); color: #94a3b8; border: 1px solid rgba(148,163,184,0.2); }
+.ps-badge-purple { background: rgba(168,85,247,0.15); color: #a855f7; border: 1px solid rgba(168,85,247,0.25); }
+.ps-badge-orange { background: rgba(251,146,60,0.15); color: #fb923c; border: 1px solid rgba(251,146,60,0.25); }
 .ps-badge-top {
-    background: linear-gradient(135deg, rgba(241,196,15,0.3), rgba(243,156,18,0.3));
-    color: #f1c40f;
-    border: 2px solid rgba(241,196,15,0.6);
+    background: linear-gradient(135deg, rgba(245,158,11,0.25), rgba(251,146,60,0.25));
+    color: #f59e0b;
+    border: 2px solid rgba(245,158,11,0.5);
     font-weight: 800;
     font-size: 0.85em;
     letter-spacing: 0.5px;
@@ -97,10 +421,10 @@ CARD_CSS = """
     animation: glow 2s ease-in-out infinite alternate;
 }
 @keyframes glow {
-    from { box-shadow: 0 0 3px rgba(241,196,15,0.2); }
-    to { box-shadow: 0 0 8px rgba(241,196,15,0.4); }
+    from { box-shadow: 0 0 3px rgba(245,158,11,0.2); }
+    to { box-shadow: 0 0 8px rgba(245,158,11,0.4); }
 }
-.ps-badge-transp { background: rgba(150,150,160,0.12); color: #aaa; border: 1px dashed rgba(150,150,160,0.4); }
+.ps-badge-transp { background: rgba(148,163,184,0.08); color: #94a3b8; border: 1px dashed rgba(148,163,184,0.3); }
 .ps-metrics {
     display: flex;
     gap: 18px;
@@ -112,27 +436,28 @@ CARD_CSS = """
 }
 .ps-metric-label {
     font-size: 0.68em;
-    color: #888;
+    color: #8b9dc3;
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
 .ps-metric-val {
     font-size: 1.3em;
     font-weight: 700;
+    color: #e2e8f0;
 }
 .ps-quality {
     font-size: 0.82em;
-    color: #bbb;
+    color: #94a3b8;
     margin-top: 6px;
     line-height: 1.6;
 }
 .ps-why {
     font-size: 0.78em;
-    color: #8e8ea0;
+    color: #8b9dc3;
     font-style: italic;
     margin-top: 4px;
     padding: 4px 8px;
-    background: rgba(100,100,120,0.1);
+    background: rgba(74, 158, 237, 0.06);
     border-radius: 6px;
     display: inline-block;
 }
@@ -148,25 +473,51 @@ CARD_CSS = """
 }
 .ps-sub-label {
     font-size: 0.65em;
-    color: #888;
+    color: #8b9dc3;
     text-transform: uppercase;
 }
 .ps-link {
     font-size: 0.82em;
-    color: #3498db;
+    color: #4a9eed;
     text-decoration: none;
 }
 .ps-link:hover {
     text-decoration: underline;
+    color: #60a5fa;
 }
 .ps-score-big {
     font-size: 1.5em;
     font-weight: 800;
 }
+
+.upgrade-btn {
+    display: inline-block;
+    padding: 8px 20px;
+    background: linear-gradient(135deg, rgba(74, 158, 237, 0.15), rgba(59, 130, 246, 0.1));
+    border: 1px solid rgba(74, 158, 237, 0.3);
+    border-radius: 10px;
+    color: #4a9eed;
+    font-weight: 600;
+    font-size: 0.85em;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.section-title {
+    font-size: 1.15em;
+    font-weight: 700;
+    color: #e2e8f0;
+    margin: 16px 0 12px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
 </style>
 """
 
-st.markdown(CARD_CSS, unsafe_allow_html=True)
+CARD_CSS = GLOBAL_CSS
+
+st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
 
 api_key = os.environ.get("BRAVE_API_KEY", "") or os.environ.get("BRAVE_SEARCH_API_KEY", "")
 
@@ -201,12 +552,12 @@ def score_to_stars_10(score):
 
 def score_color_10(score):
     if not is_valid(score):
-        return "#888"
+        return "#8b9dc3"
     if score >= 7:
-        return "#2ecc71"
+        return "#34d399"
     if score >= 4:
-        return "#f39c12"
-    return "#e74c3c"
+        return "#f59e0b"
+    return "#ef4444"
 
 
 def quality_label(score):
@@ -807,12 +1158,16 @@ Commence a 10, puis malus :
 # ── CATALOG CARD & RESULTS ──
 
 def get_confidence_badge(confidence):
-    if confidence is None:
+    if confidence is None or (isinstance(confidence, float) and pd.isna(confidence)):
         return "<span class='ps-badge ps-badge-gray'>🔍 Confiance: N/A</span>"
-    pct = int(confidence * 100)
-    if confidence >= 0.7:
+    try:
+        conf = float(confidence)
+        pct = int(conf * 100)
+    except (ValueError, TypeError):
+        return "<span class='ps-badge ps-badge-gray'>🔍 Confiance: N/A</span>"
+    if conf >= 0.7:
         return f"<span class='ps-badge ps-badge-green'>🔍 Confiance: {pct}%</span>"
-    if confidence >= 0.4:
+    if conf >= 0.4:
         return f"<span class='ps-badge ps-badge-gold'>🔍 Confiance: {pct}%</span>"
     return f"<span class='ps-badge ps-badge-red'>🔍 Confiance: {pct}%</span>"
 
@@ -1087,36 +1442,47 @@ def render_catalog_results(products):
 
 def render_sidebar():
     user = st.session_state.user
+    current_page = st.session_state.page
     with st.sidebar:
-        st.markdown(f"### 👤 {user['display_name']}")
-        st.markdown(f"📧 {user['email']}")
-        plan_label = "Pro ⭐" if user["plan"] == "pro" else "Gratuit"
-        st.markdown(f"📋 Plan : **{plan_label}**")
+        st.html("""
+        <div class='sidebar-logo'>
+            <span class='sidebar-logo-icon'>🧪</span>
+            <span class='sidebar-logo-text'>ProteinScan</span>
+        </div>
+        """)
 
-        st.divider()
+        plan_label = "Pro" if user["plan"] == "pro" else "Gratuit"
+        plan_icon = "⭐" if user["plan"] == "pro" else "📋"
+        st.html(f"""
+        <div class='sidebar-user'>
+            <div class='sidebar-user-name'>👤 {html_module.escape(user['display_name'])}</div>
+            <div class='sidebar-user-email'>{html_module.escape(user['email'])}</div>
+            <div class='sidebar-user-plan'>{plan_icon} Plan: {plan_label}</div>
+        </div>
+        """)
 
-        if st.button("📦 Catalogue", use_container_width=True):
+        if st.button("📦 Catalogue", use_container_width=True, type="primary" if current_page == "catalogue" else "secondary"):
             st.session_state.page = "catalogue"
             st.session_state.view_scan_id = None
             st.rerun()
 
-        if st.button("🔍 Nouveau scan", type="primary", use_container_width=True):
+        if st.button("🧪 Nouveau scan", type="primary" if current_page == "scan" else "secondary", use_container_width=True):
             st.session_state.page = "scan"
             st.session_state.view_scan_id = None
             st.rerun()
 
-        if st.button("📊 Tableau de bord", use_container_width=True):
+        if st.button("📊 Tableau de bord", use_container_width=True, type="primary" if current_page == "dashboard" else "secondary"):
             st.session_state.page = "dashboard"
             st.session_state.view_scan_id = None
             st.rerun()
 
-        if st.button("⚙️ Admin", use_container_width=True):
+        if st.button("⚙️ Admin", use_container_width=True, type="primary" if current_page == "admin" else "secondary"):
             st.session_state.page = "admin"
             st.session_state.view_scan_id = None
             st.rerun()
 
-        st.divider()
-        if st.button("Se deconnecter", use_container_width=True):
+        st.markdown("---")
+        if st.button("🚪 Se deconnecter", use_container_width=True):
             logout()
             st.rerun()
 
@@ -1124,9 +1490,13 @@ def render_sidebar():
 # ── AUTH PAGES ──
 
 def page_login():
-    st.title("💪 ProteinScan")
-    st.markdown("##### Comparateur de proteines whey en France")
-    st.markdown("---")
+    st.html("""
+    <div class='login-header'>
+        <div class='login-logo'>🧪</div>
+        <div class='login-title'>ProteinScan</div>
+        <div class='login-subtitle'>Comparateur de proteines whey en France</div>
+    </div>
+    """)
 
     col_left, col_right = st.columns(2)
 
@@ -1188,11 +1558,12 @@ def page_login():
                     else:
                         st.error("Cet email est deja utilise.")
 
-    st.markdown("---")
-    st.markdown(
-        "**Plan Gratuit** : 3 scans par mois | "
-        "**Plan Pro** : scans illimites (bientot disponible)"
-    )
+    st.html("""
+    <div class='login-plans'>
+        <strong>Plan Gratuit</strong> : 3 scans par mois &nbsp;|&nbsp;
+        <strong>Plan Pro</strong> : scans illimites (bientot disponible)
+    </div>
+    """)
 
 
 # ── DASHBOARD ──
@@ -1205,45 +1576,51 @@ def page_dashboard():
         page_view_scan()
         return
 
-    st.title("📊 Tableau de bord")
-    st.markdown(f"Bienvenue, **{user['display_name']}** !")
+    st.html("""
+    <div class='page-header'>
+        <span class='page-header-icon'>🧪</span>
+        <span class='page-header-title'>Tableau de bord</span>
+    </div>
+    """)
+    st.html(f"<div class='page-subtitle'>Bienvenue, {html_module.escape(user['display_name'])}</div>")
 
-    col1, col2 = st.columns(2)
+    scans_history = get_user_scans(user["id"])
+    plan_label = "Pro" if user["plan"] == "pro" else "Gratuit"
+
+    col1, col2, col3 = st.columns(3)
     with col1:
-        plan_label = "Pro ⭐" if user["plan"] == "pro" else "Gratuit"
         st.metric("Plan", plan_label)
     with col2:
-        scans_history = get_user_scans(user["id"])
         st.metric("Total scans", len(scans_history))
+    with col3:
+        if user["plan"] == "free":
+            st.html("<div style='padding-top:12px;'><span class='upgrade-btn'>Mettre a niveau</span></div>")
+        else:
+            st.metric("Statut", "Actif")
 
-    st.divider()
-    st.subheader("Historique des scans")
+    st.markdown("---")
+    st.html("<div class='section-title'>📋 Historique des scans</div>")
 
     if not scans_history:
         st.info("Vous n'avez pas encore effectue de scan. Cliquez sur **Nouveau scan** pour commencer !")
     else:
         for scan in scans_history:
+            created = scan["created_at"]
+            if isinstance(created, str):
+                date_str = created
+            else:
+                date_str = created.strftime("%d/%m/%Y a %H:%M")
+
             col_date, col_count, col_action = st.columns([3, 2, 2])
             with col_date:
-                created = scan["created_at"]
-                if isinstance(created, str):
-                    st.markdown(f"📅 {created}")
-                else:
-                    st.markdown(f"📅 {created.strftime('%d/%m/%Y a %H:%M')}")
+                st.html(f"<div class='scan-row-date'>📅 {html_module.escape(date_str)}</div>")
             with col_count:
-                st.markdown(f"📦 **{scan['product_count']}** produits")
+                st.html(f"<div class='scan-row-count'>📦 {scan['product_count']} produits</div>")
             with col_action:
-                if st.button("Voir les resultats", key=f"view_{scan['id']}"):
+                if st.button("Voir les resultats", key=f"view_{scan['id']}", use_container_width=True):
                     st.session_state.view_scan_id = scan["id"]
                     st.rerun()
-            st.divider()
-
-    if user["plan"] == "free":
-        st.markdown("---")
-        st.info(
-            "**Passez au plan Pro** pour des scans illimites ! "
-            "(Bientot disponible)"
-        )
+            st.markdown("---")
 
 
 def page_view_scan():
@@ -1269,7 +1646,12 @@ def page_scan():
     user = st.session_state.user
     render_sidebar()
 
-    st.title("🔍 Nouveau scan")
+    st.html("""
+    <div class='page-header'>
+        <span class='page-header-icon'>🧪</span>
+        <span class='page-header-title'>Nouveau scan</span>
+    </div>
+    """)
 
     tab_auto, tab_manual = st.tabs(["Scan automatique", "Analyse manuelle d'URLs"])
 
@@ -1389,7 +1771,12 @@ def page_catalogue():
     user = st.session_state.user
     render_sidebar()
 
-    st.title("📦 Catalogue de produits")
+    st.html("""
+    <div class='page-header'>
+        <span class='page-header-icon'>🧪</span>
+        <span class='page-header-title'>Catalogue de produits</span>
+    </div>
+    """)
 
     stats = get_catalog_stats()
 
@@ -1440,7 +1827,12 @@ def page_admin():
     user = st.session_state.user
     render_sidebar()
 
-    st.title("⚙️ Administration")
+    st.html("""
+    <div class='page-header'>
+        <span class='page-header-icon'>🧪</span>
+        <span class='page-header-title'>Administration</span>
+    </div>
+    """)
 
     stats = get_catalog_stats()
     col1, col2, col3, col4 = st.columns(4)
