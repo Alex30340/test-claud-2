@@ -124,25 +124,34 @@ div[data-testid="stMetric"] [data-testid="stMetricValue"] {
 }
 
 div[data-testid="stForm"] {
-    background: linear-gradient(135deg, rgba(17, 24, 39, 0.6), rgba(15, 20, 35, 0.4)) !important;
-    border: 1px solid rgba(74, 158, 237, 0.15) !important;
+    background: linear-gradient(135deg, rgba(12, 17, 30, 0.7), rgba(10, 14, 24, 0.5)) !important;
+    border: 1px solid rgba(74, 158, 237, 0.18) !important;
     border-radius: 14px !important;
-    padding: 24px !important;
+    padding: 28px 24px !important;
 }
 
 .stTextInput > div > div > input,
 .stTextArea > div > div > textarea,
 .stSelectbox > div > div {
-    background: rgba(10, 14, 26, 0.6) !important;
-    border: 1px solid rgba(74, 158, 237, 0.2) !important;
+    background: rgba(8, 12, 22, 0.8) !important;
+    border: 1px solid rgba(74, 158, 237, 0.22) !important;
     border-radius: 10px !important;
     color: #e2e8f0 !important;
+    padding: 10px 14px !important;
 }
 
 .stTextInput > div > div > input:focus,
 .stTextArea > div > div > textarea:focus {
     border-color: #4a9eed !important;
     box-shadow: 0 0 0 2px rgba(74, 158, 237, 0.15) !important;
+}
+
+.stTextInput label,
+.stTextArea label,
+.stSelectbox label {
+    color: #8b9dc3 !important;
+    font-size: 0.85em !important;
+    font-weight: 500 !important;
 }
 
 div[data-testid="stExpander"] {
@@ -1524,9 +1533,11 @@ def render_sidebar():
 def page_login():
     if LOGO_B64:
         st.html(f"""
-        <div class='login-header'>
-            <img src='data:image/png;base64,{LOGO_B64}' style='height:120px;width:auto;margin-bottom:16px;' />
-            <div class='login-subtitle'>Comparateur de proteines whey en France</div>
+        <div style='text-align:center;padding:40px 0 10px 0;'>
+            <img src='data:image/png;base64,{LOGO_B64}' style='height:160px;width:auto;' />
+        </div>
+        <div style='text-align:center;color:#6b85b0;font-size:1em;margin-bottom:36px;letter-spacing:0.3px;'>
+            Comparateur de proteines whey en France
         </div>
         """)
     else:
@@ -1599,9 +1610,9 @@ def page_login():
                         st.error("Cet email est deja utilise.")
 
     st.html("""
-    <div class='login-plans'>
-        <strong>Plan Gratuit</strong> : 3 scans par mois &nbsp;|&nbsp;
-        <strong>Plan Pro</strong> : scans illimites (bientot disponible)
+    <div style='text-align:center;margin-top:32px;padding:16px 24px;background:linear-gradient(135deg, rgba(12,17,30,0.6), rgba(10,14,24,0.4));border:1px solid rgba(74,158,237,0.12);border-radius:12px;color:#6b85b0;font-size:0.88em;'>
+        <span style='color:#4a9eed;font-weight:700;'>Plan Gratuit</span> : 3 scans par mois &nbsp;|&nbsp;
+        <span style='color:#4a9eed;font-weight:700;'>Plan Pro</span> : scans illimites (bientot disponible)
     </div>
     """)
 
