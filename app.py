@@ -1131,7 +1131,7 @@ Commence a 10, puis malus :
         render_product_card_v2(rank, row)
 
     st.divider()
-    st.subheader("📊 Tableau complet")
+    st.subheader("Tableau complet")
 
     display_cols = [
         "nom", "marque", "proteines_100g", "bcaa_per_100g_prot", "leucine_g",
@@ -1412,7 +1412,7 @@ def render_catalog_results(products):
         st.html(CARD_CSS + f"<div style='margin-top:-8px;margin-bottom:12px;padding-left:95px;'>{badge_html}</div>")
 
     st.divider()
-    st.subheader("📊 Tableau complet")
+    st.subheader("Tableau complet")
 
     display_cols = [
         "nom", "marque", "proteines_100g", "bcaa_per_100g_prot", "leucine_g",
@@ -1507,37 +1507,30 @@ def render_sidebar():
             """)
 
         plan_label = "Pro" if user["plan"] == "pro" else "Gratuit"
-        plan_icon = "⭐" if user["plan"] == "pro" else "📋"
-        st.html(f"""
+        st.markdown(f"""
         <div class='sidebar-user'>
-            <div class='sidebar-user-name'>👤 {html_module.escape(user['display_name'])}</div>
+            <div class='sidebar-user-name'><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b9dc3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>{html_module.escape(user['display_name'])}</div>
             <div class='sidebar-user-email'>{html_module.escape(user['email'])}</div>
-            <div class='sidebar-user-plan'>{plan_icon} Plan: {plan_label}</div>
+            <div class='sidebar-user-plan'>Plan: {plan_label}</div>
         </div>
-        """)
+        """, unsafe_allow_html=True)
 
-        if st.button("📦 Catalogue", use_container_width=True, type="primary" if current_page == "catalogue" else "secondary"):
-            st.session_state.page = "catalogue"
-            st.session_state.view_scan_id = None
-            st.rerun()
+        nav_pages = [
+            ("catalogue", "Catalogue"),
+            ("scan", "Nouveau scan"),
+            ("dashboard", "Tableau de bord"),
+            ("admin", "Administration"),
+        ]
 
-        if st.button("🧪 Nouveau scan", type="primary" if current_page == "scan" else "secondary", use_container_width=True):
-            st.session_state.page = "scan"
-            st.session_state.view_scan_id = None
-            st.rerun()
-
-        if st.button("📊 Tableau de bord", use_container_width=True, type="primary" if current_page == "dashboard" else "secondary"):
-            st.session_state.page = "dashboard"
-            st.session_state.view_scan_id = None
-            st.rerun()
-
-        if st.button("⚙️ Admin", use_container_width=True, type="primary" if current_page == "admin" else "secondary"):
-            st.session_state.page = "admin"
-            st.session_state.view_scan_id = None
-            st.rerun()
+        for page_id, label in nav_pages:
+            is_active = current_page == page_id
+            if st.button(label, use_container_width=True, type="primary" if is_active else "secondary", key=f"nav_{page_id}"):
+                st.session_state.page = page_id
+                st.session_state.view_scan_id = None
+                st.rerun()
 
         st.markdown("---")
-        if st.button("🚪 Se deconnecter", use_container_width=True):
+        if st.button("Se deconnecter", use_container_width=True):
             logout()
             st.rerun()
 
