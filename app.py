@@ -32,20 +32,11 @@ def get_logo_base64():
 LOGO_B64 = get_logo_base64()
 
 def render_page_header(title):
-    if LOGO_B64:
-        st.html(f"""
-        <div class='page-header'>
-            <img src='data:image/png;base64,{LOGO_B64}' style='height:32px;width:auto;border-radius:6px;' />
-            <span class='page-header-title'>{html_module.escape(title)}</span>
-        </div>
-        """)
-    else:
-        st.html(f"""
-        <div class='page-header'>
-            <span class='page-header-icon'>🧪</span>
-            <span class='page-header-title'>{html_module.escape(title)}</span>
-        </div>
-        """)
+    st.html(f"""
+    <div class='page-header'>
+        <span class='page-header-title'>{html_module.escape(title)}</span>
+    </div>
+    """)
 
 st.set_page_config(
     page_title="ProteinScan - Comparateur Whey",
@@ -62,7 +53,15 @@ html, body, [class*="st-"] {
 }
 
 .stApp {
-    background: linear-gradient(135deg, #0a0e1a 0%, #0d1321 40%, #111827 100%) !important;
+    background: radial-gradient(ellipse at 20% 50%, #131b2e 0%, #0d1321 40%, #0a0e1a 70%, #080b14 100%) !important;
+}
+
+.stMainBlockContainer {
+    background: linear-gradient(160deg, rgba(13, 19, 33, 0.4) 0%, rgba(10, 14, 26, 0.6) 50%, rgba(8, 11, 20, 0.8) 100%) !important;
+    border-radius: 20px !important;
+    margin: 8px !important;
+    padding: 24px 32px !important;
+    border: 1px solid rgba(74, 158, 237, 0.08) !important;
 }
 
 section[data-testid="stSidebar"] {
@@ -1473,8 +1472,7 @@ def render_sidebar():
         if LOGO_B64:
             st.html(f"""
             <div class='sidebar-logo'>
-                <img src='data:image/png;base64,{LOGO_B64}' style='height:40px;width:auto;border-radius:8px;' />
-                <span class='sidebar-logo-text'>ProteinScan</span>
+                <img src='data:image/png;base64,{LOGO_B64}' style='height:44px;width:auto;' />
             </div>
             """)
         else:
@@ -1527,8 +1525,7 @@ def page_login():
     if LOGO_B64:
         st.html(f"""
         <div class='login-header'>
-            <img src='data:image/png;base64,{LOGO_B64}' style='height:100px;width:auto;border-radius:12px;margin-bottom:12px;' />
-            <div class='login-title'>ProteinScan</div>
+            <img src='data:image/png;base64,{LOGO_B64}' style='height:120px;width:auto;margin-bottom:16px;' />
             <div class='login-subtitle'>Comparateur de proteines whey en France</div>
         </div>
         """)
