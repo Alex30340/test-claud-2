@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+import base64
 import html as html_module
 from datetime import datetime
 
@@ -20,6 +21,31 @@ from page_validator import validate_url_debug, is_whey_product_page
 from resolver import resolve_url_debug
 
 init_db()
+
+def get_logo_base64():
+    logo_path = os.path.join(os.path.dirname(__file__), "static", "logo.png")
+    if os.path.exists(logo_path):
+        with open(logo_path, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    return None
+
+LOGO_B64 = get_logo_base64()
+
+def render_page_header(title):
+    if LOGO_B64:
+        st.html(f"""
+        <div class='page-header'>
+            <img src='data:image/png;base64,{LOGO_B64}' style='height:32px;width:auto;border-radius:6px;' />
+            <span class='page-header-title'>{html_module.escape(title)}</span>
+        </div>
+        """)
+    else:
+        st.html(f"""
+        <div class='page-header'>
+            <span class='page-header-icon'>🧪</span>
+            <span class='page-header-title'>{html_module.escape(title)}</span>
+        </div>
+        """)
 
 st.set_page_config(
     page_title="ProteinScan - Comparateur Whey",
@@ -1444,12 +1470,20 @@ def render_sidebar():
     user = st.session_state.user
     current_page = st.session_state.page
     with st.sidebar:
-        st.html("""
-        <div class='sidebar-logo'>
-            <span class='sidebar-logo-icon'>🧪</span>
-            <span class='sidebar-logo-text'>ProteinScan</span>
-        </div>
-        """)
+        if LOGO_B64:
+            st.html(f"""
+            <div class='sidebar-logo'>
+                <img src='data:image/png;base64,{LOGO_B64}' style='height:40px;width:auto;border-radius:8px;' />
+                <span class='sidebar-logo-text'>ProteinScan</span>
+            </div>
+            """)
+        else:
+            st.html("""
+            <div class='sidebar-logo'>
+                <span class='sidebar-logo-icon'>🧪</span>
+                <span class='sidebar-logo-text'>ProteinScan</span>
+            </div>
+            """)
 
         plan_label = "Pro" if user["plan"] == "pro" else "Gratuit"
         plan_icon = "⭐" if user["plan"] == "pro" else "📋"
@@ -1490,13 +1524,22 @@ def render_sidebar():
 # ── AUTH PAGES ──
 
 def page_login():
-    st.html("""
-    <div class='login-header'>
-        <div class='login-logo'>🧪</div>
-        <div class='login-title'>ProteinScan</div>
-        <div class='login-subtitle'>Comparateur de proteines whey en France</div>
-    </div>
-    """)
+    if LOGO_B64:
+        st.html(f"""
+        <div class='login-header'>
+            <img src='data:image/png;base64,{LOGO_B64}' style='height:100px;width:auto;border-radius:12px;margin-bottom:12px;' />
+            <div class='login-title'>ProteinScan</div>
+            <div class='login-subtitle'>Comparateur de proteines whey en France</div>
+        </div>
+        """)
+    else:
+        st.html("""
+        <div class='login-header'>
+            <div class='login-logo'>🧪</div>
+            <div class='login-title'>ProteinScan</div>
+            <div class='login-subtitle'>Comparateur de proteines whey en France</div>
+        </div>
+        """)
 
     col_left, col_right = st.columns(2)
 
@@ -1576,12 +1619,7 @@ def page_dashboard():
         page_view_scan()
         return
 
-    st.html("""
-    <div class='page-header'>
-        <span class='page-header-icon'>🧪</span>
-        <span class='page-header-title'>Tableau de bord</span>
-    </div>
-    """)
+    render_page_header("Tableau de bord")
     st.html(f"<div class='page-subtitle'>Bienvenue, {html_module.escape(user['display_name'])}</div>")
 
     scans_history = get_user_scans(user["id"])
@@ -1646,12 +1684,7 @@ def page_scan():
     user = st.session_state.user
     render_sidebar()
 
-    st.html("""
-    <div class='page-header'>
-        <span class='page-header-icon'>🧪</span>
-        <span class='page-header-title'>Nouveau scan</span>
-    </div>
-    """)
+    render_page_header("Nouveau scan")
 
     tab_auto, tab_manual = st.tabs(["Scan automatique", "Analyse manuelle d'URLs"])
 
@@ -1771,12 +1804,7 @@ def page_catalogue():
     user = st.session_state.user
     render_sidebar()
 
-    st.html("""
-    <div class='page-header'>
-        <span class='page-header-icon'>🧪</span>
-        <span class='page-header-title'>Catalogue de produits</span>
-    </div>
-    """)
+    render_page_header("Catalogue de produits")
 
     stats = get_catalog_stats()
 
@@ -1827,12 +1855,7 @@ def page_admin():
     user = st.session_state.user
     render_sidebar()
 
-    st.html("""
-    <div class='page-header'>
-        <span class='page-header-icon'>🧪</span>
-        <span class='page-header-title'>Administration</span>
-    </div>
-    """)
+    render_page_header("Administration")
 
     stats = get_catalog_stats()
     col1, col2, col3, col4 = st.columns(4)
