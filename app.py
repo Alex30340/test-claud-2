@@ -61,6 +61,11 @@ html, body, [class*="st-"] {
     background: transparent !important;
 }
 
+[data-testid="stHeader"] [data-testid="stDecoration"],
+[data-testid="stHeader"] [data-testid="stToolbar"] {
+    background: transparent !important;
+}
+
 [data-testid="stAppViewContainer"],
 [data-testid="stMain"],
 .main,
@@ -81,6 +86,24 @@ html, body, [class*="st-"] {
 section[data-testid="stSidebar"] {
     background: linear-gradient(180deg, #0e1028 0%, #0c0f22 100%) !important;
     border-right: 1px solid rgba(74, 158, 237, 0.15) !important;
+}
+
+section[data-testid="stSidebar"] [data-testid="stSidebarNav"],
+section[data-testid="stSidebar"] ul[data-testid="stSidebarNavItems"],
+section[data-testid="stSidebar"] .st-emotion-cache-eczf16,
+section[data-testid="stSidebar"] nav,
+[data-testid="stSidebarNavLink"],
+[data-testid="stSidebarNavSeparator"] {
+    display: none !important;
+}
+
+section[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"] {
+    display: none !important;
+}
+
+[data-testid="stHeader"] [data-testid="stPageLink-NavLink"],
+[data-testid="stHeader"] .st-emotion-cache-eczf16 {
+    display: none !important;
 }
 
 section[data-testid="stSidebar"] .stMarkdown h1,
