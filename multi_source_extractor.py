@@ -68,11 +68,13 @@ AMINO_ALIASES = {
     "valine": "valine", "l-valine": "valine",
     "glutamine": "glutamine", "l-glutamine": "glutamine",
     "acide glutamique": "glutamine", "glutamic acid": "glutamine",
+    "ac. glutamique": "glutamine", "ac glutamique": "glutamine",
+    "glutamique + glutamine": "glutamine", "glutamique": "glutamine",
     "arginine": "arginine", "l-arginine": "arginine",
     "lysine": "lysine", "l-lysine": "lysine",
     "méthionine": "methionine", "methionine": "methionine", "l-methionine": "methionine",
     "phénylalanine": "phenylalanine", "phenylalanine": "phenylalanine",
-    "l-phenylalanine": "phenylalanine",
+    "l-phenylalanine": "phenylalanine", "phenylalanine + tyrosine": "phenylalanine",
     "thréonine": "threonine", "threonine": "threonine", "l-threonine": "threonine",
     "tryptophane": "tryptophan", "tryptophan": "tryptophan", "l-tryptophan": "tryptophan",
     "histidine": "histidine", "l-histidine": "histidine",
@@ -82,8 +84,11 @@ AMINO_ALIASES = {
     "sérine": "serine", "serine": "serine", "l-serine": "serine",
     "tyrosine": "tyrosine", "l-tyrosine": "tyrosine",
     "acide aspartique": "aspartic_acid", "aspartic acid": "aspartic_acid",
+    "aspartique + asparagine": "aspartic_acid", "aspartique": "aspartic_acid",
+    "ac. aspartique": "aspartic_acid", "ac aspartique": "aspartic_acid",
     "cystéine": "cysteine", "cysteine": "cysteine", "l-cysteine": "cysteine",
-    "cystine": "cysteine",
+    "cystine": "cysteine", "cysteine + methionine": "cysteine",
+    "methionine + cysteine": "cysteine",
 }
 
 
