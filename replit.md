@@ -39,9 +39,14 @@ The user prefers clear, concise communication. They value iterative development 
 - **Product Detection**: Automated identification of whey type (Native, Isolate, Hydrolysate, Concentrate), French manufacturing, origin, and presence of specific additives (sweeteners, flavors, thickeners, colorants).
 - **Multi-Source Nutrition Extraction** (integrated in scraper.py):
     - Source A: Structured data (JSON-LD nutrition, additionalProperty) → confidence 0.85-0.9
-    - Source B: HTML tables and div sections → confidence 0.6-0.9
+    - Source B: HTML tables and div sections → confidence 0.65-0.9
     - Source C: OCR via GPT-4o vision on nutrition label images → confidence 0.55-0.65, triggered only when protein/kcal/aminogram missing
     - Fusion engine picks highest-confidence source per field, cross-checks macro coherence (kcal vs P+C+F)
+    - `_match_field` uses longest-match-wins to prevent alias conflicts (e.g., "isoleucine" vs "leucine")
+    - `_extract_from_table` deduplicates fields (seen_fields set), prefers "pour 100g de protéine" column for amino, scans context (siblings, parent headings) for amino_base detection
+    - `_extract_from_div_sections` has sanity bounds (amino 0.01-50g, nutrition 0-100g, kcal 50-800) and max text length filters to prevent false positives
+    - `_compute_bcaa_per_100g_prot` in scraper.py: smart inference for unknown amino_base using value range heuristics
+    - Re-analysis pipeline recalculates protein/health/global/final scores after updating nutrition data
     - Extended DB columns: carbs_per_100g, sugar_per_100g, fat_per_100g, sat_fat_per_100g, kcal_per_100g, salt_per_100g, fiber_per_100g, amino_profile (JSONB), amino_base, raw_evidence (JSONB), nutrition_sources, macro_coherent, glutamine_g, arginine_g, lysine_g
 - **Aminogram Extraction**: Full 18 amino acid profile (Leucine, Isoleucine, Valine, Glutamine, Arginine, Lysine, Methionine, Phenylalanine, Threonine, Tryptophan, Histidine, Alanine, Glycine, Proline, Serine, Tyrosine, Aspartic acid, Cysteine) with base detection (per_100g_protein/per_100g/per_serving).
 - **JavaScript Render Detection**: Identifies pages requiring JavaScript rendering and adjusts confidence scores accordingly.

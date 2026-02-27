@@ -655,6 +655,30 @@ def detect_bcaa(text: str) -> bool:
     return "bcaa" in t or "2:1:1" in t
 
 
+def _compute_bcaa_per_100g_prot(leucine_g, isoleucine_g, valine_g, protein_per_100g, amino_base):
+    if not leucine_g or not isoleucine_g or not valine_g:
+        return None
+    total_bcaa = leucine_g + isoleucine_g + valine_g
+    if amino_base == "per_100g_protein":
+        return round(total_bcaa, 1)
+    elif amino_base == "per_100g":
+        if protein_per_100g and protein_per_100g > 0:
+            return round(total_bcaa * 100 / protein_per_100g, 1)
+        return None
+    elif amino_base == "per_serving":
+        return None
+    else:
+        if total_bcaa > 15 and total_bcaa < 40:
+            return round(total_bcaa, 1)
+        elif protein_per_100g and protein_per_100g > 0 and total_bcaa < 30:
+            computed = round(total_bcaa * 100 / protein_per_100g, 1)
+            if 15 <= computed <= 35:
+                return computed
+            elif 15 <= total_bcaa <= 35:
+                return round(total_bcaa, 1)
+        return None
+
+
 ARTIFICIAL_FLAVOR_PATTERNS = [
     r"ar[oô]mes?\s+artificiel",
     r"ar[oô]mes?\s+synth[ée]tique",
@@ -1169,19 +1193,13 @@ def extract_product_data(url: str) -> dict | None:
             isoleucine_g = isoleucine_g or legacy_amino.get("isoleucine_g")
             valine_g = valine_g or legacy_amino.get("valine_g")
             bcaa_per_100g_prot = legacy_amino.get("bcaa_per_100g_prot")
-        else:
-            if protein_per_100g and protein_per_100g > 0:
-                total_bcaa = (leucine_g or 0) + (isoleucine_g or 0) + (valine_g or 0)
-                if amino_base == "per_100g_protein":
-                    bcaa_per_100g_prot = total_bcaa
-                elif amino_base == "per_100g":
-                    bcaa_per_100g_prot = round(total_bcaa * 100 / protein_per_100g, 1) if protein_per_100g > 0 else None
-                elif amino_base != "per_serving":
-                    bcaa_per_100g_prot = total_bcaa
-                else:
-                    bcaa_per_100g_prot = None
-            else:
-                bcaa_per_100g_prot = None
+
+        if leucine_g and isoleucine_g and valine_g:
+            bcaa_per_100g_prot = _compute_bcaa_per_100g_prot(
+                leucine_g, isoleucine_g, valine_g, protein_per_100g, amino_base
+            )
+        elif not bcaa_per_100g_prot:
+            bcaa_per_100g_prot = None
 
         price_score = calculate_price_score(price_per_kg)
 
@@ -1896,15 +1914,13 @@ def reanalyze_product_nutrition(product_id: int, offer_url: str) -> dict | None:
         has_aminogram = len(amino_profile) >= 6 or bool(leucine_g and isoleucine_g and valine_g)
         update_data["has_aminogram"] = has_aminogram
 
-        if leucine_g and isoleucine_g and valine_g and protein_per_100g and protein_per_100g > 0:
-            total_bcaa = (leucine_g or 0) + (isoleucine_g or 0) + (valine_g or 0)
+        if leucine_g and isoleucine_g and valine_g:
             amino_base = multi_result.get("amino_base", "unknown")
-            if amino_base == "per_100g_protein":
-                update_data["bcaa_per_100g_prot"] = total_bcaa
-            elif amino_base == "per_100g":
-                update_data["bcaa_per_100g_prot"] = round(total_bcaa * 100 / protein_per_100g, 1)
-            elif amino_base != "per_serving":
-                update_data["bcaa_per_100g_prot"] = total_bcaa
+            bcaa_val = _compute_bcaa_per_100g_prot(
+                leucine_g, isoleucine_g, valine_g, protein_per_100g, amino_base
+            )
+            if bcaa_val is not None:
+                update_data["bcaa_per_100g_prot"] = bcaa_val
             update_data["mentions_bcaa"] = True
 
         raw_evidence = multi_result.get("raw_evidence", [])
@@ -1924,6 +1940,58 @@ def reanalyze_product_nutrition(product_id: int, offer_url: str) -> dict | None:
             update_data["has_colorants"] = detect_colorants(analysis_text)
             update_data["ingredient_count"] = count_ingredients(ingredients_text)
             update_data["ingredients"] = ingredients_text
+
+        bcaa_val = update_data.get("bcaa_per_100g_prot")
+        eff_protein = protein_per_100g
+        protein_score_result = calculate_protein_score(
+            protein_per_100g=eff_protein,
+            bcaa_per_100g_prot=bcaa_val,
+            leucine_g=leucine_g,
+            isoleucine_g=isoleucine_g,
+            valine_g=valine_g,
+        )
+        update_data["score_proteique"] = protein_score_result["score_proteique"]
+
+        health_result = calculate_health_score(
+            has_sucralose=update_data.get("has_sucralose", False),
+            has_acesulfame_k=update_data.get("has_acesulfame_k", False),
+            has_aspartame=update_data.get("has_aspartame", False),
+            has_artificial_flavors=update_data.get("has_artificial_flavors", False),
+            has_thickeners=update_data.get("has_thickeners", False),
+            has_colorants=update_data.get("has_colorants", False),
+            ingredient_count=update_data.get("ingredient_count", 0),
+        )
+        update_data["score_sante"] = health_result["score_sante"]
+
+        from db import get_connection
+        conn_score = get_connection()
+        cur_score = conn_score.cursor()
+        try:
+            cur_score.execute("SELECT prix_par_kg FROM offers WHERE product_id = %s AND is_active = TRUE ORDER BY prix_par_kg ASC LIMIT 1", (product_id,))
+            row = cur_score.fetchone()
+            price_per_kg = row[0] if row else None
+        finally:
+            cur_score.close()
+            conn_score.close()
+
+        global_score = calculate_global_score(
+            protein_score_result["score_proteique"],
+            health_result["score_sante"],
+        )
+        update_data["score_global"] = global_score
+
+        final_result = calculate_final_score_10(
+            score_proteique=protein_score_result["score_proteique"],
+            score_sante=health_result["score_sante"],
+            price_per_kg=price_per_kg,
+            protein_per_100g=protein_per_100g,
+            leucine_g=leucine_g,
+            has_aminogram=has_aminogram,
+            bcaa_missing=protein_score_result.get("bcaa_missing", False),
+            leucine_missing=protein_score_result.get("leucine_missing", False),
+            ingredient_count=update_data.get("ingredient_count"),
+        )
+        update_data["score_final"] = final_result["score_final"]
 
         return update_data
 

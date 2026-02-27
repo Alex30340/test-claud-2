@@ -156,20 +156,33 @@ def _match_field(label: str) -> tuple[str | None, str]:
     label_clean = re.sub(r'[^a-zàâäéèêëïîôùûüç0-9\s\-/]', '', label.lower().strip())
     label_clean = re.sub(r'\s+', ' ', label_clean).strip()
 
+    best_match = None
+    best_len = 0
+    best_type = ""
+
     for alias, field in FIELD_ALIASES.items():
-        if alias in label_clean:
-            return field, "nutrition"
+        if alias in label_clean and len(alias) > best_len:
+            best_match = field
+            best_len = len(alias)
+            best_type = "nutrition"
     for alias, field in AMINO_ALIASES.items():
-        if alias in label_clean:
-            return field, "amino"
+        if alias in label_clean and len(alias) > best_len:
+            best_match = field
+            best_len = len(alias)
+            best_type = "amino"
+
+    if best_match:
+        return best_match, best_type
     return None, ""
 
 
 def _detect_amino_base(header_text: str) -> str:
     t = header_text.lower()
-    if re.search(r"(pour|per|par)\s+100\s*g\s+de\s+prot[eé]ine", t):
+    if re.search(r"(pour|per|par)\s+100\s*g\s+(de\s+prot[eé]ine|d.acides?\s+amin[eé])", t):
         return "per_100g_protein"
-    if re.search(r"(pour|per|par)\s+100\s*g", t):
+    if re.search(r"100\s*g\s+(de\s+prot[eé]ine|d.acides?\s+amin[eé])", t):
+        return "per_100g_protein"
+    if re.search(r"(pour|per|par)\s+100\s*g(\s+de\s+produit)?", t):
         return "per_100g"
     if re.search(r"(pour|per|par)\s+(dose|portion|serving|scoop)", t):
         return "per_serving"
@@ -356,20 +369,55 @@ def _extract_from_table(table, soup_url: str = "") -> list[NutritionEvidence]:
     if not rows:
         return evidences
 
+    all_header_texts = []
+    for r in rows[:3]:
+        cells = r.find_all(["td", "th"])
+        all_header_texts.append(" ".join(c.get_text(strip=True) for c in cells).lower())
+    full_header_text = " ".join(all_header_texts)
+
     header_cells = rows[0].find_all(["td", "th"])
     header_text = " ".join(c.get_text(strip=True) for c in header_cells).lower()
 
+    per100g_prot_col = None
     per100g_col = None
     serving_col = None
     for i, cell in enumerate(header_cells):
         ct = cell.get_text(strip=True).lower()
-        if re.search(r"(pour|per|par)\s+100\s*g", ct) or ct == "100 g" or ct == "100g":
-            per100g_col = i
+        if re.search(r"(pour|per|par)\s+100\s*g\s+(de\s+prot[eé]ine|d.acides?\s+amin[eé])", ct):
+            per100g_prot_col = i
+        elif re.search(r"(pour|per|par)\s+100\s*g", ct) or ct == "100 g" or ct == "100g":
+            if per100g_col is None:
+                per100g_col = i
         elif re.search(r"(dose|portion|serving|scoop)", ct):
             serving_col = i
 
-    amino_base = _detect_amino_base(header_text)
-    is_amino_table = any(kw in header_text for kw in ["amino", "acide", "bcaa", "aminogramme"])
+    context_text = full_header_text
+    for sibling_list in [table.previous_siblings, table.next_siblings]:
+        for sib in sibling_list:
+            if hasattr(sib, 'get_text'):
+                st = sib.get_text(strip=True).lower()
+                if st and len(st) < 200:
+                    context_text = st + " " + context_text
+                    break
+            elif isinstance(sib, str) and sib.strip():
+                context_text = sib.strip().lower() + " " + context_text
+                break
+    if table.parent:
+        parent_heading = table.parent.find(["h2", "h3", "h4", "h5", "p", "div"],
+                                            string=re.compile(r"(?i)(100\s*g|amino|portion|dose)"))
+        if parent_heading:
+            context_text = parent_heading.get_text(strip=True).lower() + " " + context_text
+
+    amino_base = _detect_amino_base(context_text)
+    is_amino_table = any(kw in context_text for kw in ["amino", "acide amin", "bcaa", "aminogramme"])
+
+    if is_amino_table and amino_base == "unknown":
+        if per100g_prot_col is not None:
+            amino_base = "per_100g_protein"
+        elif per100g_col is not None:
+            amino_base = "per_100g"
+
+    seen_fields = set()
 
     for row in rows[1:]:
         cells = row.find_all(["td", "th"])
@@ -381,7 +429,15 @@ def _extract_from_table(table, soup_url: str = "") -> list[NutritionEvidence]:
         if not field:
             continue
 
-        value_col = per100g_col if per100g_col is not None else 1
+        if field in seen_fields:
+            continue
+
+        if ftype == "amino" and per100g_prot_col is not None and per100g_prot_col < len(cells):
+            value_col = per100g_prot_col
+        elif per100g_col is not None:
+            value_col = per100g_col
+        else:
+            value_col = 1
         if value_col >= len(cells):
             value_col = len(cells) - 1
 
@@ -392,12 +448,27 @@ def _extract_from_table(table, soup_url: str = "") -> list[NutritionEvidence]:
         if val is None:
             continue
 
+        normalized = _normalize_value(val, unit)
+
+        if ftype == "amino" and (normalized < 0.01 or normalized > 50):
+            continue
+        if ftype == "nutrition":
+            if field == "kcal_per_100g" and (normalized < 50 or normalized > 800):
+                continue
+            elif field != "kcal_per_100g" and (normalized < 0 or normalized > 100):
+                continue
+
         conf = 0.9 if per100g_col is not None else 0.7
         if ftype == "amino":
-            conf = 0.85 if per100g_col is not None or is_amino_table else 0.6
+            if per100g_prot_col is not None or per100g_col is not None or is_amino_table:
+                conf = 0.85
+            else:
+                conf = 0.75
+
+        seen_fields.add(field)
 
         evidences.append(NutritionEvidence(
-            field=field, value=_normalize_value(val, unit),
+            field=field, value=normalized,
             unit="g" if unit in ("g", "mg", "µg") else unit,
             source="html_table",
             confidence=conf,
@@ -410,6 +481,7 @@ def _extract_from_table(table, soup_url: str = "") -> list[NutritionEvidence]:
 
 def _extract_from_div_sections(soup: BeautifulSoup) -> list[NutritionEvidence]:
     evidences = []
+    seen_fields = set()
     sections = soup.find_all(["div", "section", "dl"],
                               class_=re.compile(r"nutri|valeur|composition|amino|ingredi|nutrition", re.I))
 
@@ -420,20 +492,37 @@ def _extract_from_div_sections(soup: BeautifulSoup) -> list[NutritionEvidence]:
         items = section.find_all(["div", "dt", "dd", "li", "span", "p"])
         for i, el in enumerate(items):
             el_text = el.get_text(strip=True)
+            if len(el_text) > 80:
+                continue
             field, ftype = _match_field(el_text)
             if not field:
+                continue
+            if field in seen_fields:
                 continue
 
             for j in range(i + 1, min(i + 4, len(items))):
                 next_text = items[j].get_text(strip=True)
+                if len(next_text) > 30:
+                    continue
                 val = _parse_num(next_text)
                 if val is not None:
                     unit = _detect_unit(next_text)
+                    normalized = _normalize_value(val, unit)
+
+                    if ftype == "amino" and (normalized < 0.01 or normalized > 50):
+                        continue
+                    if ftype == "nutrition":
+                        if field == "kcal_per_100g" and (normalized < 50 or normalized > 800):
+                            continue
+                        elif field != "kcal_per_100g" and normalized > 100:
+                            continue
+
+                    seen_fields.add(field)
                     evidences.append(NutritionEvidence(
-                        field=field, value=_normalize_value(val, unit),
+                        field=field, value=normalized,
                         unit="g" if unit in ("g", "mg", "µg") else unit,
                         source="html_section",
-                        confidence=0.7,
+                        confidence=0.65,
                         raw_snippet=f"{el_text}: {next_text}",
                         amino_base=amino_base if ftype == "amino" else "",
                     ))
