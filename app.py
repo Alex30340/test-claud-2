@@ -2919,6 +2919,59 @@ def page_admin():
                 status_container_r.error(f"Erreur Refresh : {e}")
 
     st.divider()
+
+    st.subheader("🧬 Re-analyse nutritionnelle")
+    st.markdown("Re-scrape les produits pour extraire l'aminogramme complet, les macros etendus (glucides, lipides, kcal, sel...) et les donnees manquantes via le pipeline multi-source (HTML + OCR).")
+
+    from db import get_connection
+    _conn_check = get_connection()
+    try:
+        _cur_check = _conn_check.cursor()
+        _cur_check.execute("SELECT COUNT(*) FROM products WHERE amino_profile IS NULL OR kcal_per_100g IS NULL")
+        _missing_count = _cur_check.fetchone()[0]
+        _cur_check.close()
+    finally:
+        _conn_check.close()
+
+    st.info(f"{_missing_count} produit(s) sans aminogramme complet ou macros etendus.")
+
+    if _missing_count > 0:
+        if st.button("🧬 Lancer la re-analyse", type="primary", use_container_width=True, key="btn_reanalysis"):
+            from scraper import run_reanalysis
+            status_ra = st.empty()
+            progress_ra = st.progress(0)
+            detail_ra = st.empty()
+
+            def ra_progress(current, total, detail=""):
+                if total > 0:
+                    progress_ra.progress(min(current / total, 1.0))
+                detail_ra.text(detail)
+
+            def ra_status(msg):
+                status_ra.info(msg)
+
+            try:
+                with st.spinner("Re-analyse en cours..."):
+                    ra_result = run_reanalysis(
+                        progress_callback=ra_progress,
+                        status_callback=ra_status,
+                    )
+                progress_ra.empty()
+                detail_ra.empty()
+                status_ra.success(
+                    f"Re-analyse terminee ! "
+                    f"Mis a jour: {ra_result.get('updated', 0)}, "
+                    f"Echoues: {ra_result.get('failed', 0)}, "
+                    f"Ignores: {ra_result.get('skipped', 0)}"
+                )
+            except Exception as e:
+                progress_ra.empty()
+                detail_ra.empty()
+                status_ra.error(f"Erreur re-analyse : {e}")
+    else:
+        st.success("Tous les produits ont deja leur aminogramme et macros complets.")
+
+    st.divider()
     st.subheader("📋 Historique des pipelines")
 
     runs = get_pipeline_runs(limit=20)

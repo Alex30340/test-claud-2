@@ -58,4 +58,10 @@ The user prefers clear, concise communication. They value iterative development 
 -   `psycopg2-binary`: PostgreSQL database adapter.
 -   **PostgreSQL**: Primary database for storing user accounts, product data, offers, and pipeline run history.
 -   **Brave Search API**: Used for the Discovery pipeline to find new product URLs. (Requires `BRAVE_SEARCH_API_KEY` secret).
--   **GPT-4o Vision (indirectly via `multi_source_extractor.py`)**: Implied for OCR-based nutrition extraction from images.
+-   `openai`: OpenAI client for GPT-4o vision OCR (via Replit AI Integrations, no API key needed).
+-   **GPT-4o Vision (via `multi_source_extractor.py`)**: OCR-based nutrition/aminogram extraction from product label images. Triggered when protein/kcal/amino data is missing from HTML sources.
+
+## Admin Features
+- **Discovery Pipeline**: Brave Search → scrape → validate → score → upsert products/offers
+- **Refresh Pipeline**: Re-scrape active offers for price/availability updates
+- **Re-analysis Pipeline**: Re-scrape existing products to populate extended nutrition fields (aminogram, macros) using multi_source_extractor. Targets products where amino_profile IS NULL or kcal_per_100g IS NULL.

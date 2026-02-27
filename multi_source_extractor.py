@@ -324,6 +324,152 @@ def _extract_from_div_sections(soup: BeautifulSoup) -> list[NutritionEvidence]:
     return evidences
 
 
+def _extract_amino_from_text(text: str) -> list[NutritionEvidence]:
+    evidences = []
+    t = text.lower()
+
+    amino_regex_map = {
+        "leucine": [
+            r"(?:l[\-\s]?)?leucine\s*[:\s\|]*\s*(\d+(?:[.,]\d+)?)\s*(mg|g)",
+        ],
+        "isoleucine": [
+            r"(?:l[\-\s]?)?isoleucine\s*[:\s\|]*\s*(\d+(?:[.,]\d+)?)\s*(mg|g)",
+        ],
+        "valine": [
+            r"(?:l[\-\s]?)?valine\s*[:\s\|]*\s*(\d+(?:[.,]\d+)?)\s*(mg|g)",
+        ],
+        "glutamine": [
+            r"(?:l[\-\s]?)?glutamine\s*[:\s\|]*\s*(\d+(?:[.,]\d+)?)\s*(mg|g)",
+            r"acide\s+glutamique\s*[:\s\|]*\s*(\d+(?:[.,]\d+)?)\s*(mg|g)",
+        ],
+        "arginine": [
+            r"(?:l[\-\s]?)?arginine\s*[:\s\|]*\s*(\d+(?:[.,]\d+)?)\s*(mg|g)",
+        ],
+        "lysine": [
+            r"(?:l[\-\s]?)?lysine\s*[:\s\|]*\s*(\d+(?:[.,]\d+)?)\s*(mg|g)",
+        ],
+        "methionine": [
+            r"(?:l[\-\s]?)?m[ée]thionine\s*[:\s\|]*\s*(\d+(?:[.,]\d+)?)\s*(mg|g)",
+        ],
+        "phenylalanine": [
+            r"(?:l[\-\s]?)?ph[ée]nylalanine\s*[:\s\|]*\s*(\d+(?:[.,]\d+)?)\s*(mg|g)",
+        ],
+        "threonine": [
+            r"(?:l[\-\s]?)?thr[ée]onine\s*[:\s\|]*\s*(\d+(?:[.,]\d+)?)\s*(mg|g)",
+        ],
+        "tryptophan": [
+            r"(?:l[\-\s]?)?tryptophane?\s*[:\s\|]*\s*(\d+(?:[.,]\d+)?)\s*(mg|g)",
+        ],
+        "histidine": [
+            r"(?:l[\-\s]?)?histidine\s*[:\s\|]*\s*(\d+(?:[.,]\d+)?)\s*(mg|g)",
+        ],
+        "alanine": [
+            r"(?:l[\-\s]?)?alanine\s*[:\s\|]*\s*(\d+(?:[.,]\d+)?)\s*(mg|g)",
+        ],
+        "glycine": [
+            r"glycine\s*[:\s\|]*\s*(\d+(?:[.,]\d+)?)\s*(mg|g)",
+        ],
+        "proline": [
+            r"(?:l[\-\s]?)?proline\s*[:\s\|]*\s*(\d+(?:[.,]\d+)?)\s*(mg|g)",
+        ],
+        "serine": [
+            r"(?:l[\-\s]?)?s[ée]rine\s*[:\s\|]*\s*(\d+(?:[.,]\d+)?)\s*(mg|g)",
+        ],
+        "tyrosine": [
+            r"(?:l[\-\s]?)?tyrosine\s*[:\s\|]*\s*(\d+(?:[.,]\d+)?)\s*(mg|g)",
+        ],
+        "aspartic_acid": [
+            r"acide\s+aspartique\s*[:\s\|]*\s*(\d+(?:[.,]\d+)?)\s*(mg|g)",
+            r"aspartic\s+acid\s*[:\s\|]*\s*(\d+(?:[.,]\d+)?)\s*(mg|g)",
+        ],
+        "cysteine": [
+            r"(?:l[\-\s]?)?cyst[ée]ine\s*[:\s\|]*\s*(\d+(?:[.,]\d+)?)\s*(mg|g)",
+            r"cystine\s*[:\s\|]*\s*(\d+(?:[.,]\d+)?)\s*(mg|g)",
+        ],
+    }
+
+    amino_base = "unknown"
+    if re.search(r"(pour|per|par)\s+100\s*g\s+de\s+prot[eé]ine", t):
+        amino_base = "per_100g_protein"
+    elif re.search(r"aminogramme.{0,30}(pour|per|par)\s+100\s*g", t):
+        amino_base = "per_100g"
+    elif re.search(r"(pour|per|par)\s+(dose|portion|serving|scoop)", t):
+        amino_base = "per_serving"
+
+    for amino_name, patterns in amino_regex_map.items():
+        for pat in patterns:
+            m = re.search(pat, t)
+            if m:
+                val = float(m.group(1).replace(",", "."))
+                unit = m.group(2)
+                normalized = _normalize_value(val, unit)
+                if 0.01 <= normalized <= 50:
+                    evidences.append(NutritionEvidence(
+                        field=amino_name, value=normalized,
+                        unit="g", source="regex_text",
+                        confidence=0.65,
+                        raw_snippet=m.group(0)[:100],
+                        amino_base=amino_base,
+                    ))
+                break
+
+    return evidences
+
+
+def _extract_nutrition_from_text(text: str) -> list[NutritionEvidence]:
+    evidences = []
+    t = text.lower()
+
+    nutrition_regex_map = {
+        "protein_per_100g": [
+            r"prot[ée]ines?\s*[:\s]*(\d+(?:[.,]\d+)?)\s*(g|mg)",
+            r"protein\s*[:\s]*(\d+(?:[.,]\d+)?)\s*(g|mg)",
+        ],
+        "carbs_per_100g": [
+            r"glucides?\s*[:\s]*(\d+(?:[.,]\d+)?)\s*(g|mg)",
+            r"carbohydrates?\s*[:\s]*(\d+(?:[.,]\d+)?)\s*(g|mg)",
+        ],
+        "fat_per_100g": [
+            r"(?:mati[èe]res?\s+grasses?|lipides?|graisses?)\s*[:\s]*(\d+(?:[.,]\d+)?)\s*(g|mg)",
+            r"(?:total\s+)?fat\s*[:\s]*(\d+(?:[.,]\d+)?)\s*(g|mg)",
+        ],
+        "kcal_per_100g": [
+            r"(\d+(?:[.,]\d+)?)\s*kcal",
+            r"[ée]nergie\s*[:\s]*(\d+(?:[.,]\d+)?)\s*kcal",
+            r"calories?\s*[:\s]*(\d+(?:[.,]\d+)?)",
+        ],
+        "salt_per_100g": [
+            r"sel\s*[:\s]*(\d+(?:[.,]\d+)?)\s*(g|mg)",
+            r"salt\s*[:\s]*(\d+(?:[.,]\d+)?)\s*(g|mg)",
+        ],
+    }
+
+    for field, patterns in nutrition_regex_map.items():
+        for pat in patterns:
+            m = re.search(pat, t)
+            if m:
+                val = float(m.group(1).replace(",", "."))
+                if field == "kcal_per_100g":
+                    if 50 <= val <= 800:
+                        evidences.append(NutritionEvidence(
+                            field=field, value=val, unit="kcal",
+                            source="regex_text", confidence=0.55,
+                            raw_snippet=m.group(0)[:100],
+                        ))
+                else:
+                    unit = m.group(2) if len(m.groups()) > 1 else "g"
+                    normalized = _normalize_value(val, unit)
+                    if 0 <= normalized <= 100:
+                        evidences.append(NutritionEvidence(
+                            field=field, value=normalized, unit="g",
+                            source="regex_text", confidence=0.55,
+                            raw_snippet=m.group(0)[:100],
+                        ))
+                break
+
+    return evidences
+
+
 def extract_source_b(soup: BeautifulSoup) -> list[NutritionEvidence]:
     evidences = []
 
@@ -336,6 +482,23 @@ def extract_source_b(soup: BeautifulSoup) -> list[NutritionEvidence]:
         evidences.extend(_extract_from_table(table))
 
     evidences.extend(_extract_from_div_sections(soup))
+
+    page_text = soup.get_text(" ", strip=True)
+    amino_fields_found = {e.field for e in evidences if e.field in AMINO_FIELDS}
+    if len(amino_fields_found) < 3:
+        text_amino = _extract_amino_from_text(page_text)
+        for ev in text_amino:
+            if ev.field not in amino_fields_found:
+                evidences.append(ev)
+                amino_fields_found.add(ev.field)
+
+    nutrition_fields_found = {e.field for e in evidences if e.field in NUTRITION_FIELDS}
+    if len(nutrition_fields_found) < 3:
+        text_nutri = _extract_nutrition_from_text(page_text)
+        for ev in text_nutri:
+            if ev.field not in nutrition_fields_found:
+                evidences.append(ev)
+                nutrition_fields_found.add(ev.field)
 
     return evidences
 

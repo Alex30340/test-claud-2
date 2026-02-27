@@ -1176,8 +1176,10 @@ def extract_product_data(url: str) -> dict | None:
                     bcaa_per_100g_prot = total_bcaa
                 elif amino_base == "per_100g":
                     bcaa_per_100g_prot = round(total_bcaa * 100 / protein_per_100g, 1) if protein_per_100g > 0 else None
-                else:
+                elif amino_base != "per_serving":
                     bcaa_per_100g_prot = total_bcaa
+                else:
+                    bcaa_per_100g_prot = None
             else:
                 bcaa_per_100g_prot = None
 
@@ -1805,6 +1807,203 @@ def refresh_offer_price(url: str) -> dict | None:
     except Exception as e:
         logger.warning(f"Refresh error for {url}: {e}")
         return None
+
+
+def reanalyze_product_nutrition(product_id: int, offer_url: str) -> dict | None:
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+        }
+
+        with httpx.Client(timeout=HTTP_TIMEOUT, follow_redirects=True, verify=False) as client:
+            response = client.get(offer_url, headers=headers)
+            response.raise_for_status()
+
+        soup = BeautifulSoup(response.text, "lxml")
+        jsonld = extract_jsonld(soup)
+
+        from multi_source_extractor import extract_all_nutrition
+
+        og_data = {}
+        for meta in soup.find_all("meta", attrs={"property": True}):
+            og_data[meta.get("property", "")] = meta.get("content", "")
+
+        multi_result = extract_all_nutrition(
+            soup=soup, jsonld=jsonld, og=og_data,
+            page_url=offer_url, enable_ocr=True, force_ocr=False,
+        )
+
+        nutrition = multi_result.get("nutrition", {})
+        amino_profile = multi_result.get("amino_profile", {})
+        sources_used = multi_result.get("sources_used", [])
+
+        page_text = soup.get_text(" ", strip=True)
+        ingredients_text = find_ingredients_block(page_text, soup=soup)
+        multi_ingredients = multi_result.get("ingredients_text")
+        if multi_ingredients and (not ingredients_text or len(multi_ingredients) > len(ingredients_text)):
+            ingredients_text = multi_ingredients
+
+        protein_per_100g = nutrition.get("protein_per_100g")
+
+        leucine_g = amino_profile.get("leucine")
+        isoleucine_g = amino_profile.get("isoleucine")
+        valine_g = amino_profile.get("valine")
+
+        if not leucine_g or not isoleucine_g or not valine_g:
+            legacy = extract_amino_values(page_text, protein_per_100g)
+            leucine_g = leucine_g or legacy.get("leucine_g")
+            isoleucine_g = isoleucine_g or legacy.get("isoleucine_g")
+            valine_g = valine_g or legacy.get("valine_g")
+
+        update_data = {}
+
+        if protein_per_100g is not None:
+            update_data["proteines_100g"] = protein_per_100g
+        if nutrition.get("carbs_per_100g") is not None:
+            update_data["carbs_per_100g"] = nutrition["carbs_per_100g"]
+        if nutrition.get("sugar_per_100g") is not None:
+            update_data["sugar_per_100g"] = nutrition["sugar_per_100g"]
+        if nutrition.get("fat_per_100g") is not None:
+            update_data["fat_per_100g"] = nutrition["fat_per_100g"]
+        if nutrition.get("sat_fat_per_100g") is not None:
+            update_data["sat_fat_per_100g"] = nutrition["sat_fat_per_100g"]
+        if nutrition.get("kcal_per_100g") is not None:
+            update_data["kcal_per_100g"] = nutrition["kcal_per_100g"]
+        if nutrition.get("salt_per_100g") is not None:
+            update_data["salt_per_100g"] = nutrition["salt_per_100g"]
+        if nutrition.get("fiber_per_100g") is not None:
+            update_data["fiber_per_100g"] = nutrition["fiber_per_100g"]
+
+        if amino_profile:
+            update_data["amino_profile"] = amino_profile
+        update_data["amino_base"] = multi_result.get("amino_base", "unknown")
+
+        if leucine_g:
+            update_data["leucine_g"] = leucine_g
+        if isoleucine_g:
+            update_data["isoleucine_g"] = isoleucine_g
+        if valine_g:
+            update_data["valine_g"] = valine_g
+        if amino_profile.get("glutamine"):
+            update_data["glutamine_g"] = amino_profile["glutamine"]
+        if amino_profile.get("arginine"):
+            update_data["arginine_g"] = amino_profile["arginine"]
+        if amino_profile.get("lysine"):
+            update_data["lysine_g"] = amino_profile["lysine"]
+
+        has_aminogram = len(amino_profile) >= 6 or bool(leucine_g and isoleucine_g and valine_g)
+        update_data["has_aminogram"] = has_aminogram
+
+        if leucine_g and isoleucine_g and valine_g and protein_per_100g and protein_per_100g > 0:
+            total_bcaa = (leucine_g or 0) + (isoleucine_g or 0) + (valine_g or 0)
+            amino_base = multi_result.get("amino_base", "unknown")
+            if amino_base == "per_100g_protein":
+                update_data["bcaa_per_100g_prot"] = total_bcaa
+            elif amino_base == "per_100g":
+                update_data["bcaa_per_100g_prot"] = round(total_bcaa * 100 / protein_per_100g, 1)
+            elif amino_base != "per_serving":
+                update_data["bcaa_per_100g_prot"] = total_bcaa
+            update_data["mentions_bcaa"] = True
+
+        raw_evidence = multi_result.get("raw_evidence", [])
+        if raw_evidence:
+            update_data["raw_evidence"] = raw_evidence
+        update_data["nutrition_sources"] = ",".join(sources_used) if sources_used else None
+        update_data["macro_coherent"] = multi_result.get("macro_coherent", True)
+
+        if ingredients_text:
+            analysis_text = ingredients_text
+            sweeteners = detect_sweeteners(analysis_text)
+            update_data["has_sucralose"] = sweeteners.get("sucralose", False)
+            update_data["has_acesulfame_k"] = sweeteners.get("acesulfame_k", False)
+            update_data["has_aspartame"] = sweeteners.get("aspartame", False)
+            update_data["has_artificial_flavors"] = detect_artificial_flavors(analysis_text)
+            update_data["has_thickeners"] = detect_thickeners(analysis_text)
+            update_data["has_colorants"] = detect_colorants(analysis_text)
+            update_data["ingredient_count"] = count_ingredients(ingredients_text)
+            update_data["ingredients"] = ingredients_text
+
+        return update_data
+
+    except Exception as e:
+        logger.warning(f"Re-analysis error for product {product_id} ({offer_url}): {e}")
+        return None
+
+
+def run_reanalysis(progress_callback=None, status_callback=None) -> dict:
+    from db import get_connection, get_product_offers
+    import psycopg2.extras
+    import json as _json
+
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    try:
+        cur.execute("""
+            SELECT p.id, p.name FROM products p
+            WHERE p.amino_profile IS NULL OR p.kcal_per_100g IS NULL
+            ORDER BY p.id
+        """)
+        products_to_update = [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+
+    stats = {"updated": 0, "failed": 0, "skipped": 0, "total": len(products_to_update)}
+
+    if status_callback:
+        status_callback(f"Re-analyse de {len(products_to_update)} produits...")
+
+    for i, prod in enumerate(products_to_update):
+        if progress_callback:
+            progress_callback(i + 1, len(products_to_update), f"Re-analyse: {prod['name'][:40]}")
+
+        offers = get_product_offers(prod["id"])
+        active_offers = [o for o in offers if o.get("is_active", True)]
+
+        if not active_offers:
+            stats["skipped"] += 1
+            continue
+
+        best_offer = active_offers[0]
+        result = reanalyze_product_nutrition(prod["id"], best_offer["url"])
+
+        if result and len(result) > 2:
+            conn2 = get_connection()
+            cur2 = conn2.cursor()
+            try:
+                set_parts = []
+                vals = []
+                for k, v in result.items():
+                    if k in ("amino_profile", "raw_evidence") and v is not None:
+                        set_parts.append(f"{k} = %s")
+                        vals.append(_json.dumps(v))
+                    else:
+                        set_parts.append(f"{k} = %s")
+                        vals.append(v)
+
+                set_parts.append("updated_at = NOW()")
+                vals.append(prod["id"])
+
+                sql = f"UPDATE products SET {', '.join(set_parts)} WHERE id = %s"
+                cur2.execute(sql, vals)
+                conn2.commit()
+                stats["updated"] += 1
+            except Exception as e:
+                conn2.rollback()
+                logger.warning(f"DB update failed for product {prod['id']}: {e}")
+                stats["failed"] += 1
+            finally:
+                cur2.close()
+                conn2.close()
+        else:
+            stats["failed"] += 1
+
+        time.sleep(1)
+
+    return stats
 
 
 def run_refresh(progress_callback=None, status_callback=None) -> dict:
