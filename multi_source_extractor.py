@@ -172,6 +172,119 @@ def _detect_amino_base(header_text: str) -> str:
 
 
 # ──────────────────────────────────────────────
+# HELPER: Deep JSON traversal for nutrition data
+# ──────────────────────────────────────────────
+
+def _deep_find_nutrition_in_json(obj, depth=0, max_depth=8) -> list[NutritionEvidence]:
+    if depth > max_depth:
+        return []
+    evidences = []
+
+    if isinstance(obj, dict):
+        for key, val in obj.items():
+            key_lower = key.lower()
+
+            field, ftype = _match_field(key_lower)
+            if field and isinstance(val, (int, float, str)):
+                num_val = _parse_num(str(val)) if isinstance(val, str) else float(val)
+                if num_val is not None:
+                    unit = _detect_unit(str(val)) if isinstance(val, str) else "g"
+                    if field == "kcal_per_100g" and unit == "g":
+                        unit = "kcal"
+                    normalized = _normalize_value(num_val, unit)
+                    if ftype == "amino":
+                        if 0.01 <= normalized <= 50:
+                            evidences.append(NutritionEvidence(
+                                field=field, value=normalized,
+                                unit="g", source="json_script",
+                                confidence=0.75,
+                                raw_snippet=f"{key}: {val}",
+                                amino_base="unknown",
+                            ))
+                    elif ftype == "nutrition":
+                        if field == "kcal_per_100g":
+                            if 50 <= normalized <= 800:
+                                evidences.append(NutritionEvidence(
+                                    field=field, value=normalized,
+                                    unit="kcal", source="json_script",
+                                    confidence=0.75,
+                                    raw_snippet=f"{key}: {val}",
+                                ))
+                        elif 0 <= normalized <= 100:
+                            evidences.append(NutritionEvidence(
+                                field=field, value=normalized,
+                                unit="g", source="json_script",
+                                confidence=0.75,
+                                raw_snippet=f"{key}: {val}",
+                            ))
+
+            if isinstance(val, (dict, list)):
+                evidences.extend(_deep_find_nutrition_in_json(val, depth + 1, max_depth))
+
+    elif isinstance(obj, list):
+        for item in obj:
+            if isinstance(item, (dict, list)):
+                evidences.extend(_deep_find_nutrition_in_json(item, depth + 1, max_depth))
+
+    return evidences
+
+
+def _extract_from_script_json(soup: BeautifulSoup) -> list[NutritionEvidence]:
+    import json
+    evidences = []
+
+    next_data = soup.find("script", id="__NEXT_DATA__")
+    if next_data and next_data.string:
+        try:
+            data = json.loads(next_data.string)
+            evidences.extend(_deep_find_nutrition_in_json(data))
+        except (json.JSONDecodeError, Exception):
+            pass
+
+    for script in soup.find_all("script"):
+        if not script.string:
+            continue
+        s = script.string.strip()
+
+        for pattern_name, regex in [
+            ("nuxt", r"window\.__NUXT__\s*=\s*(\{.+?\})\s*;"),
+            ("initial_state", r"window\.__INITIAL_STATE__\s*=\s*(\{.+?\})\s*;"),
+        ]:
+            m = re.search(regex, s, re.DOTALL)
+            if m:
+                try:
+                    data = json.loads(m.group(1))
+                    evidences.extend(_deep_find_nutrition_in_json(data))
+                except (json.JSONDecodeError, Exception):
+                    pass
+
+        if script.get("type") == "application/json" and script.get("id") != "__NEXT_DATA__":
+            try:
+                data = json.loads(s)
+                if isinstance(data, (dict, list)):
+                    evidences.extend(_deep_find_nutrition_in_json(data))
+            except (json.JSONDecodeError, Exception):
+                pass
+
+        if "application/ld+json" not in (script.get("type") or ""):
+            amino_kw = ["leucine", "isoleucine", "valine", "glutamine", "arginine",
+                        "lysine", "bcaa", "aminogram"]
+            s_lower = s[:5000].lower()
+            if any(kw in s_lower for kw in amino_kw):
+                json_objects = re.findall(r'\{[^{}]{20,}\}', s[:10000])
+                for jo in json_objects[:5]:
+                    try:
+                        data = json.loads(jo)
+                        ev = _deep_find_nutrition_in_json(data, max_depth=3)
+                        if ev:
+                            evidences.extend(ev)
+                    except (json.JSONDecodeError, Exception):
+                        pass
+
+    return evidences
+
+
+# ──────────────────────────────────────────────
 # SOURCE A: Structured data (JSON-LD, OG, microdata)
 # ──────────────────────────────────────────────
 
@@ -483,6 +596,15 @@ def extract_source_b(soup: BeautifulSoup) -> list[NutritionEvidence]:
 
     evidences.extend(_extract_from_div_sections(soup))
 
+    script_evidences = _extract_from_script_json(soup)
+    if script_evidences:
+        existing_fields = {e.field for e in evidences}
+        for ev in script_evidences:
+            if ev.field not in existing_fields:
+                evidences.append(ev)
+                existing_fields.add(ev.field)
+        logger.info(f"[MULTI] Script JSON extraction: {len(script_evidences)} values found")
+
     page_text = soup.get_text(" ", strip=True)
     amino_fields_found = {e.field for e in evidences if e.field in AMINO_FIELDS}
     if len(amino_fields_found) < 3:
@@ -509,37 +631,61 @@ def extract_source_b(soup: BeautifulSoup) -> list[NutritionEvidence]:
 
 def find_nutrition_images(soup: BeautifulSoup, page_url: str) -> list[str]:
     candidates = []
+    product_images = []
+
     for img in soup.find_all("img"):
         src = img.get("src", "") or img.get("data-src", "") or img.get("data-lazy-src", "")
         if not src:
+            continue
+        if any(skip in src.lower() for skip in ["icon", "logo", "avatar", "flag", "badge", "pixel", ".svg", "tracking", "analytics"]):
             continue
 
         alt = (img.get("alt", "") or "").lower()
         title = (img.get("title", "") or "").lower()
         cls = " ".join(img.get("class", [])).lower()
         parent_text = (img.parent.get_text(strip=True) if img.parent else "").lower()[:100]
+        src_lower = src.lower()
 
         score = 0
         nutrition_kw = ["nutri", "valeur", "composition", "amino", "etiquette",
-                        "label", "ingrédient", "ingredient", "tableau"]
+                        "label", "ingrédient", "ingredient", "tableau", "information",
+                        "nutrition-facts", "back", "dos", "verso", "detail"]
         for kw in nutrition_kw:
-            if kw in alt or kw in title or kw in cls or kw in parent_text:
+            if kw in alt or kw in title or kw in cls or kw in parent_text or kw in src_lower:
                 score += 2
 
         width = img.get("width", "")
         height = img.get("height", "")
         w = _parse_num(str(width)) or 0
         h = _parse_num(str(height)) or 0
+
         if w >= 400 or h >= 400:
             score += 1
+        if w >= 200 or h >= 200:
+            is_product_img = any(kw in cls or kw in alt for kw in ["product", "produit", "gallery", "main", "zoom", "primary"])
+            if is_product_img:
+                score += 1
+
+        full_url = urljoin(page_url, src)
+        if not full_url.startswith("http"):
+            continue
 
         if score > 0:
-            full_url = urljoin(page_url, src)
-            if full_url.startswith("http"):
-                candidates.append((score, full_url))
+            candidates.append((score, full_url))
+        elif (w >= 300 or h >= 300) and any(ext in src_lower for ext in [".jpg", ".jpeg", ".png", ".webp"]):
+            product_images.append(full_url)
 
     candidates.sort(key=lambda x: -x[0])
-    return [url for _, url in candidates[:3]]
+    result = [url for _, url in candidates[:3]]
+
+    if len(result) < 2 and product_images:
+        for pi in product_images[:2]:
+            if pi not in result:
+                result.append(pi)
+            if len(result) >= 3:
+                break
+
+    return result
 
 
 def _pick_highest_res(image_url: str) -> str:

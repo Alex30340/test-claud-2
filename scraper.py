@@ -1832,7 +1832,7 @@ def reanalyze_product_nutrition(product_id: int, offer_url: str) -> dict | None:
 
         multi_result = extract_all_nutrition(
             soup=soup, jsonld=jsonld, og=og_data,
-            page_url=offer_url, enable_ocr=True, force_ocr=False,
+            page_url=offer_url, enable_ocr=True, force_ocr=True,
         )
 
         nutrition = multi_result.get("nutrition", {})
