@@ -87,14 +87,12 @@ GLOBAL_CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
-*, *::before, *::after { transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease; }
-
 html, body, [class*="st-"] {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
 }
 
 .stApp {
-    background: radial-gradient(ellipse at 50% 0%, #1e2250 0%, #161840 18%, #101330 35%, #0b0e24 55%, #080a1a 80%, #060815 100%) !important;
+    background: #080a14 !important;
 }
 
 .stApp > header,
@@ -118,15 +116,19 @@ html, body, [class*="st-"] {
 }
 
 .stMainBlockContainer {
-    border-radius: 24px !important;
-    margin: 12px !important;
-    padding: 32px 40px !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    padding: 24px 32px !important;
     border: none !important;
 }
 
+@media (max-width: 768px) {
+    .stMainBlockContainer { padding: 12px 8px !important; }
+}
+
 section[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #0d0f28 0%, #0a0d1f 100%) !important;
-    border-right: 1px solid rgba(74, 158, 237, 0.12) !important;
+    background: #0c0e1e !important;
+    border-right: 1px solid rgba(255,255,255,0.06) !important;
     padding-top: 8px !important;
 }
 
@@ -151,298 +153,279 @@ section[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"] {
 section[data-testid="stSidebar"] .stMarkdown h1,
 section[data-testid="stSidebar"] .stMarkdown h2,
 section[data-testid="stSidebar"] .stMarkdown h3 {
-    color: #e2e8f0 !important;
+    color: #f0f2f5 !important;
 }
 
 div[data-testid="stMetric"] {
-    background: linear-gradient(135deg, rgba(15, 20, 38, 0.9), rgba(12, 16, 30, 0.7)) !important;
-    border: 1px solid rgba(74, 158, 237, 0.12) !important;
-    border-radius: 16px !important;
-    padding: 20px 24px !important;
-    transition: all 0.3s ease !important;
+    background: rgba(255,255,255,0.03) !important;
+    border: 1px solid rgba(255,255,255,0.06) !important;
+    border-radius: 8px !important;
+    padding: 18px 22px !important;
 }
 
 div[data-testid="stMetric"]:hover {
-    border-color: rgba(74, 158, 237, 0.25) !important;
-    box-shadow: 0 4px 20px rgba(74, 158, 237, 0.06) !important;
+    border-color: rgba(255,255,255,0.1) !important;
 }
 
 div[data-testid="stMetric"] label {
-    color: #7b8fb8 !important;
+    color: #8b95a5 !important;
     font-size: 0.78em !important;
     text-transform: uppercase !important;
-    letter-spacing: 0.8px !important;
+    letter-spacing: 0.6px !important;
     font-weight: 500 !important;
 }
 
 div[data-testid="stMetric"] [data-testid="stMetricValue"] {
-    color: #e2e8f0 !important;
+    color: #f0f2f5 !important;
     font-weight: 700 !important;
 }
 
 .stButton > button {
-    border-radius: 12px !important;
-    font-weight: 600 !important;
-    font-size: 0.9em !important;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
-    border: 1px solid rgba(74, 158, 237, 0.25) !important;
-    background: linear-gradient(135deg, rgba(74, 158, 237, 0.12), rgba(59, 130, 246, 0.08)) !important;
-    color: #4a9eed !important;
+    border-radius: 8px !important;
+    font-weight: 500 !important;
+    font-size: 0.88em !important;
+    transition: all 0.15s ease !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    background: rgba(255,255,255,0.04) !important;
+    color: #c0c8d4 !important;
     padding: 8px 20px !important;
 }
 
 .stButton > button:hover {
-    background: linear-gradient(135deg, rgba(74, 158, 237, 0.28), rgba(59, 130, 246, 0.18)) !important;
-    border-color: rgba(74, 158, 237, 0.5) !important;
-    box-shadow: 0 6px 24px rgba(74, 158, 237, 0.15) !important;
-    transform: translateY(-2px) !important;
+    background: rgba(255,255,255,0.08) !important;
+    border-color: rgba(255,255,255,0.16) !important;
+    transform: none !important;
 }
 
 .stButton > button:active {
-    transform: translateY(0px) !important;
-    box-shadow: 0 2px 8px rgba(74, 158, 237, 0.1) !important;
+    transform: none !important;
 }
 
 .stButton > button[kind="primary"] {
-    background: linear-gradient(135deg, #2563eb, #3b82f6) !important;
+    background: #2563eb !important;
     color: white !important;
-    border: 1px solid rgba(59, 130, 246, 0.5) !important;
-    box-shadow: 0 4px 16px rgba(37, 99, 235, 0.25) !important;
+    border: 1px solid #2563eb !important;
 }
 
 .stButton > button[kind="primary"]:hover {
-    background: linear-gradient(135deg, #1d4ed8, #2563eb) !important;
-    box-shadow: 0 8px 32px rgba(37, 99, 235, 0.35) !important;
-    transform: translateY(-2px) !important;
+    background: #1d4ed8 !important;
+    border-color: #1d4ed8 !important;
+    transform: none !important;
 }
 
 div[data-testid="stForm"] {
-    background: linear-gradient(135deg, rgba(12, 17, 32, 0.8), rgba(10, 14, 26, 0.6)) !important;
-    border: 1px solid rgba(74, 158, 237, 0.15) !important;
-    border-radius: 16px !important;
-    padding: 32px 28px !important;
+    background: rgba(255,255,255,0.02) !important;
+    border: 1px solid rgba(255,255,255,0.06) !important;
+    border-radius: 8px !important;
+    padding: 28px 24px !important;
 }
 
 .stTextInput > div > div > input,
 .stTextArea > div > div > textarea,
 .stSelectbox > div > div {
-    background: rgba(6, 10, 20, 0.9) !important;
-    border: 1px solid rgba(74, 158, 237, 0.18) !important;
-    border-radius: 12px !important;
-    color: #e2e8f0 !important;
-    padding: 12px 16px !important;
-    transition: all 0.2s ease !important;
+    background: rgba(0,0,0,0.3) !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    border-radius: 6px !important;
+    color: #f0f2f5 !important;
+    padding: 10px 14px !important;
 }
 
 .stTextInput > div > div > input:focus,
 .stTextArea > div > div > textarea:focus {
-    border-color: #4a9eed !important;
-    box-shadow: 0 0 0 3px rgba(74, 158, 237, 0.12) !important;
+    border-color: #2563eb !important;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15) !important;
 }
 
 .stTextInput label,
 .stTextArea label,
 .stSelectbox label {
-    color: #7b8fb8 !important;
+    color: #8b95a5 !important;
     font-size: 0.85em !important;
     font-weight: 500 !important;
 }
 
 div[data-testid="stExpander"] {
-    background: rgba(14, 18, 35, 0.6) !important;
-    border: 1px solid rgba(74, 158, 237, 0.1) !important;
-    border-radius: 16px !important;
-    transition: border-color 0.2s ease !important;
+    background: rgba(255,255,255,0.02) !important;
+    border: 1px solid rgba(255,255,255,0.06) !important;
+    border-radius: 8px !important;
 }
 
 div[data-testid="stExpander"]:hover {
-    border-color: rgba(74, 158, 237, 0.2) !important;
+    border-color: rgba(255,255,255,0.1) !important;
 }
 
 .stDataFrame {
-    border-radius: 16px !important;
+    border-radius: 8px !important;
     overflow: hidden !important;
 }
 
 .stTabs [data-baseweb="tab-list"] {
-    gap: 6px !important;
-    background: rgba(14, 18, 35, 0.5) !important;
-    border-radius: 14px !important;
-    padding: 5px !important;
+    gap: 4px !important;
+    background: rgba(255,255,255,0.03) !important;
+    border-radius: 8px !important;
+    padding: 4px !important;
 }
 
 .stTabs [data-baseweb="tab"] {
-    border-radius: 10px !important;
-    color: #7b8fb8 !important;
+    border-radius: 6px !important;
+    color: #8b95a5 !important;
     font-weight: 500 !important;
-    padding: 10px 20px !important;
-    transition: all 0.2s ease !important;
+    padding: 8px 18px !important;
 }
 
 .stTabs [aria-selected="true"] {
-    background: rgba(74, 158, 237, 0.18) !important;
-    color: #4a9eed !important;
+    background: rgba(37, 99, 235, 0.15) !important;
+    color: #6ba1eb !important;
 }
 
 hr {
-    border-color: rgba(74, 158, 237, 0.08) !important;
+    border-color: rgba(255,255,255,0.06) !important;
     margin: 24px 0 !important;
 }
 
 .stProgress > div > div > div {
-    background: linear-gradient(90deg, #2563eb, #4a9eed) !important;
-    border-radius: 10px !important;
+    background: #2563eb !important;
+    border-radius: 4px !important;
 }
 
 div[data-testid="stSlider"] > div > div {
-    color: #4a9eed !important;
+    color: #6ba1eb !important;
 }
 
 .stDownloadButton > button {
-    background: linear-gradient(135deg, rgba(74, 158, 237, 0.1), rgba(59, 130, 246, 0.06)) !important;
-    border: 1px solid rgba(74, 158, 237, 0.2) !important;
-    color: #4a9eed !important;
-    border-radius: 12px !important;
+    background: rgba(255,255,255,0.04) !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    color: #6ba1eb !important;
+    border-radius: 8px !important;
 }
 
 .stDownloadButton > button:hover {
-    background: linear-gradient(135deg, rgba(74, 158, 237, 0.22), rgba(59, 130, 246, 0.12)) !important;
-    box-shadow: 0 4px 16px rgba(74, 158, 237, 0.1) !important;
+    background: rgba(255,255,255,0.08) !important;
 }
 
 div.stAlert {
-    border-radius: 14px !important;
+    border-radius: 8px !important;
 }
 
 .sidebar-logo {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 12px 0 20px 0;
-    margin-bottom: 12px;
-    border-bottom: 1px solid rgba(74, 158, 237, 0.1);
+    gap: 10px;
+    padding: 10px 0 16px 0;
+    margin-bottom: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 
 .sidebar-logo-icon {
-    font-size: 1.8em;
-    background: linear-gradient(135deg, #2563eb, #4a9eed);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    font-size: 1.5em;
+    color: #2563eb;
 }
 
 .sidebar-logo-text {
-    font-size: 1.4em;
-    font-weight: 800;
-    color: #e2e8f0;
-    letter-spacing: -0.5px;
+    font-size: 1.2em;
+    font-weight: 700;
+    color: #f0f2f5;
+    letter-spacing: -0.3px;
 }
 
 .sidebar-user {
-    background: linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(74, 158, 237, 0.04));
-    border: 1px solid rgba(74, 158, 237, 0.12);
-    border-radius: 14px;
-    padding: 16px 18px;
-    margin: 16px 0 20px 0;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin: 12px 0 16px 0;
 }
 
 .sidebar-user-name {
-    font-weight: 700;
-    font-size: 1em;
-    color: #e2e8f0;
+    font-weight: 600;
+    font-size: 0.95em;
+    color: #f0f2f5;
 }
 
 .sidebar-user-email {
     font-size: 0.8em;
-    color: #7b8fb8;
-    margin-top: 3px;
+    color: #8b95a5;
+    margin-top: 2px;
 }
 
 .sidebar-user-plan {
-    font-size: 0.78em;
-    color: #4a9eed;
+    font-size: 0.75em;
+    color: #6ba1eb;
     font-weight: 600;
-    margin-top: 8px;
-    display: flex;
-    align-items: center;
-    gap: 4px;
+    margin-top: 6px;
 }
 
 .page-header {
     display: flex;
     align-items: center;
-    gap: 14px;
-    margin-bottom: 12px;
-    padding-bottom: 12px;
+    gap: 12px;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
 }
 
 .page-header-icon {
-    font-size: 1.6em;
-    background: linear-gradient(135deg, #2563eb, #4a9eed);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    font-size: 1.4em;
+    color: #2563eb;
 }
 
 .page-header-title {
-    font-size: 1.9em;
-    font-weight: 800;
-    color: #e2e8f0;
-    letter-spacing: -0.5px;
+    font-size: 1.6em;
+    font-weight: 700;
+    color: #f0f2f5;
+    letter-spacing: -0.3px;
 }
 
 .page-subtitle {
-    color: #7b8fb8;
-    font-size: 0.95em;
-    margin-bottom: 28px;
+    color: #8b95a5;
+    font-size: 0.9em;
+    margin-bottom: 24px;
 }
 
 .stat-card {
-    background: linear-gradient(135deg, rgba(15, 20, 38, 0.85), rgba(12, 16, 30, 0.6));
-    border: 1px solid rgba(74, 158, 237, 0.12);
-    border-radius: 16px;
-    padding: 24px 28px;
-    margin-bottom: 20px;
-    transition: all 0.3s ease;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
 }
 
 .stat-card:hover {
-    border-color: rgba(74, 158, 237, 0.22);
-    box-shadow: 0 4px 20px rgba(74, 158, 237, 0.06);
+    border-color: rgba(255,255,255,0.1);
 }
 
 .stat-card-label {
     font-size: 0.72em;
-    color: #7b8fb8;
+    color: #8b95a5;
     text-transform: uppercase;
-    letter-spacing: 0.8px;
-    margin-bottom: 6px;
+    letter-spacing: 0.6px;
+    margin-bottom: 4px;
 }
 
 .stat-card-value {
-    font-size: 1.8em;
-    font-weight: 800;
-    color: #e2e8f0;
+    font-size: 1.6em;
+    font-weight: 700;
+    color: #f0f2f5;
 }
 
 .scan-row {
-    background: linear-gradient(135deg, rgba(15, 20, 38, 0.7), rgba(12, 16, 30, 0.4));
-    border: 1px solid rgba(74, 158, 237, 0.08);
-    border-radius: 14px;
-    padding: 18px 24px;
-    margin-bottom: 12px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 10px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    transition: all 0.2s ease;
 }
 
 .scan-row:hover {
-    border-color: rgba(74, 158, 237, 0.18);
+    border-color: rgba(255,255,255,0.1);
 }
 
 .scan-row-date {
-    color: #e2e8f0;
-    font-size: 0.9em;
+    color: #f0f2f5;
+    font-size: 0.88em;
     font-weight: 500;
     display: flex;
     align-items: center;
@@ -451,11 +434,8 @@ div.stAlert {
 
 .scan-row-count {
     color: #f59e0b;
-    font-size: 0.9em;
+    font-size: 0.88em;
     font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 6px;
 }
 
 .login-container {
@@ -470,67 +450,63 @@ div.stAlert {
 }
 
 .login-logo {
-    font-size: 3em;
+    font-size: 2.5em;
     margin-bottom: 8px;
-    background: linear-gradient(135deg, #2563eb, #4a9eed);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    color: #2563eb;
 }
 
 .login-title {
-    font-size: 2.2em;
-    font-weight: 800;
-    color: #e2e8f0;
+    font-size: 1.8em;
+    font-weight: 700;
+    color: #f0f2f5;
     margin-bottom: 6px;
 }
 
 .login-subtitle {
-    font-size: 1em;
-    color: #7b8fb8;
+    font-size: 0.95em;
+    color: #8b95a5;
 }
 
 .login-plans {
     text-align: center;
-    margin-top: 36px;
-    padding: 20px 28px;
-    background: linear-gradient(135deg, rgba(15, 20, 38, 0.6), rgba(12, 16, 30, 0.4));
-    border: 1px solid rgba(74, 158, 237, 0.1);
-    border-radius: 14px;
-    color: #7b8fb8;
-    font-size: 0.9em;
+    margin-top: 32px;
+    padding: 16px 24px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    color: #8b95a5;
+    font-size: 0.88em;
 }
 
 .ps-card {
-    border: 1px solid rgba(74, 158, 237, 0.1);
-    border-radius: 16px;
-    padding: 22px 26px;
-    margin-bottom: 16px;
-    background: linear-gradient(135deg, rgba(15, 20, 38, 0.75), rgba(12, 16, 30, 0.45));
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    padding: 20px 22px;
+    margin-bottom: 12px;
+    background: rgba(255,255,255,0.02);
+    transition: border-color 0.15s ease;
 }
 .ps-card:hover {
-    border-color: rgba(74, 158, 237, 0.28);
-    box-shadow: 0 8px 32px rgba(74, 158, 237, 0.08);
-    transform: translateY(-2px);
+    border-color: rgba(255,255,255,0.12);
 }
 .ps-rank {
-    font-size: 1.6em;
-    font-weight: 800;
+    font-size: 1.5em;
+    font-weight: 700;
     text-align: center;
     line-height: 1.1;
 }
 .ps-stars {
     color: #f59e0b;
-    font-size: 1.3em;
+    font-size: 1.2em;
     letter-spacing: 1px;
 }
 .ps-stars-sm {
     color: #f59e0b;
-    font-size: 0.95em;
+    font-size: 0.9em;
 }
 .ps-score-num {
-    font-size: 0.85em;
-    color: #7b8fb8;
+    font-size: 0.82em;
+    color: #8b95a5;
     margin-left: 4px;
 }
 .ps-title {
@@ -538,364 +514,402 @@ div.stAlert {
     font-weight: 700;
     margin-bottom: 3px;
     line-height: 1.3;
-    color: #e2e8f0;
+    color: #f0f2f5;
 }
 .ps-brand {
     font-size: 0.85em;
-    color: #7b8fb8;
+    color: #8b95a5;
 }
 .ps-badge {
     display: inline-block;
-    padding: 3px 12px;
-    border-radius: 20px;
-    font-size: 0.78em;
-    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 0.75em;
+    font-weight: 500;
     margin: 2px 3px;
     line-height: 1.5;
-    transition: all 0.2s ease;
 }
-.ps-badge-green { background: rgba(46,204,113,0.12); color: #34d399; border: 1px solid rgba(46,204,113,0.22); }
-.ps-badge-blue { background: rgba(74,158,237,0.12); color: #4a9eed; border: 1px solid rgba(74,158,237,0.22); }
-.ps-badge-gold { background: rgba(245,158,11,0.12); color: #f59e0b; border: 1px solid rgba(245,158,11,0.22); }
-.ps-badge-red { background: rgba(239,68,68,0.12); color: #ef4444; border: 1px solid rgba(239,68,68,0.22); }
-.ps-badge-gray { background: rgba(148,163,184,0.1); color: #94a3b8; border: 1px solid rgba(148,163,184,0.18); }
-.ps-badge-purple { background: rgba(168,85,247,0.12); color: #a855f7; border: 1px solid rgba(168,85,247,0.22); }
-.ps-badge-orange { background: rgba(251,146,60,0.12); color: #fb923c; border: 1px solid rgba(251,146,60,0.22); }
+.ps-badge-green { background: rgba(46,204,113,0.1); color: #34d399; border: 1px solid rgba(46,204,113,0.15); }
+.ps-badge-blue { background: rgba(74,158,237,0.1); color: #6ba1eb; border: 1px solid rgba(74,158,237,0.15); }
+.ps-badge-gold { background: rgba(245,158,11,0.1); color: #f59e0b; border: 1px solid rgba(245,158,11,0.15); }
+.ps-badge-red { background: rgba(239,68,68,0.1); color: #ef4444; border: 1px solid rgba(239,68,68,0.15); }
+.ps-badge-gray { background: rgba(148,163,184,0.08); color: #94a3b8; border: 1px solid rgba(148,163,184,0.12); }
+.ps-badge-purple { background: rgba(168,85,247,0.1); color: #a855f7; border: 1px solid rgba(168,85,247,0.15); }
+.ps-badge-orange { background: rgba(251,146,60,0.1); color: #fb923c; border: 1px solid rgba(251,146,60,0.15); }
 .ps-badge-top {
-    background: linear-gradient(135deg, rgba(245,158,11,0.2), rgba(251,146,60,0.2));
+    background: rgba(245,158,11,0.12);
     color: #f59e0b;
-    border: 2px solid rgba(245,158,11,0.45);
-    font-weight: 800;
-    font-size: 0.85em;
-    letter-spacing: 0.5px;
-    padding: 4px 14px;
-    animation: glow 2s ease-in-out infinite alternate;
+    border: 1px solid rgba(245,158,11,0.25);
+    font-weight: 700;
+    font-size: 0.8em;
+    padding: 3px 12px;
 }
-@keyframes glow {
-    from { box-shadow: 0 0 4px rgba(245,158,11,0.15); }
-    to { box-shadow: 0 0 12px rgba(245,158,11,0.3); }
-}
-.ps-badge-transp { background: rgba(148,163,184,0.06); color: #94a3b8; border: 1px dashed rgba(148,163,184,0.25); }
+.ps-badge-transp { background: rgba(148,163,184,0.04); color: #94a3b8; border: 1px dashed rgba(148,163,184,0.15); }
 .ps-metrics {
     display: flex;
-    gap: 20px;
+    gap: 18px;
     flex-wrap: wrap;
-    margin: 10px 0;
+    margin: 8px 0;
 }
 .ps-metric {
-    min-width: 75px;
+    min-width: 70px;
 }
 .ps-metric-label {
     font-size: 0.68em;
-    color: #7b8fb8;
+    color: #8b95a5;
     text-transform: uppercase;
-    letter-spacing: 0.6px;
+    letter-spacing: 0.5px;
 }
 .ps-metric-val {
-    font-size: 1.3em;
+    font-size: 1.2em;
     font-weight: 700;
-    color: #e2e8f0;
+    color: #f0f2f5;
 }
 .ps-quality {
     font-size: 0.82em;
-    color: #8b9dba;
+    color: #8b95a5;
     margin-top: 8px;
     line-height: 1.6;
 }
 .ps-why {
     font-size: 0.78em;
-    color: #7b8fb8;
+    color: #8b95a5;
     font-style: italic;
     margin-top: 6px;
-    padding: 6px 10px;
-    background: rgba(74, 158, 237, 0.05);
-    border-radius: 8px;
+    padding: 5px 10px;
+    background: rgba(255,255,255,0.02);
+    border-radius: 4px;
     display: inline-block;
 }
 .ps-sub-scores {
     display: flex;
-    gap: 16px;
+    gap: 14px;
     flex-wrap: wrap;
-    margin-top: 10px;
+    margin-top: 8px;
 }
 .ps-sub-score {
     text-align: center;
-    min-width: 68px;
+    min-width: 64px;
 }
 .ps-sub-label {
     font-size: 0.65em;
-    color: #7b8fb8;
+    color: #8b95a5;
     text-transform: uppercase;
 }
 .ps-link {
     font-size: 0.82em;
-    color: #4a9eed;
+    color: #6ba1eb;
     text-decoration: none;
-    transition: color 0.2s ease;
 }
 .ps-link:hover {
     text-decoration: underline;
-    color: #60a5fa;
+    color: #93bbf0;
 }
 .ps-score-big {
-    font-size: 1.5em;
-    font-weight: 800;
+    font-size: 1.4em;
+    font-weight: 700;
 }
 
 .upgrade-btn {
     display: inline-block;
-    padding: 10px 24px;
-    background: linear-gradient(135deg, rgba(74, 158, 237, 0.12), rgba(59, 130, 246, 0.08));
-    border: 1px solid rgba(74, 158, 237, 0.25);
-    border-radius: 12px;
-    color: #4a9eed;
-    font-weight: 600;
+    padding: 8px 20px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    color: #6ba1eb;
+    font-weight: 500;
     font-size: 0.85em;
     text-decoration: none;
     cursor: pointer;
-    transition: all 0.2s ease;
 }
 
 .upgrade-btn:hover {
-    background: linear-gradient(135deg, rgba(74, 158, 237, 0.22), rgba(59, 130, 246, 0.14));
-    box-shadow: 0 4px 16px rgba(74, 158, 237, 0.1);
+    background: rgba(255,255,255,0.08);
 }
 
 .section-title {
-    font-size: 1.18em;
-    font-weight: 700;
-    color: #e2e8f0;
-    margin: 20px 0 16px 0;
+    font-size: 1.1em;
+    font-weight: 600;
+    color: #f0f2f5;
+    margin: 16px 0 12px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.landing-navbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 40px;
+    height: 56px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(10, 12, 24, 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+@media (max-width: 768px) {
+    .landing-navbar { padding: 0 16px; }
+    .landing-navbar-links { display: none !important; }
+}
+.landing-navbar-left {
     display: flex;
     align-items: center;
     gap: 10px;
 }
-
-.landing-header {
+.landing-navbar-brand {
+    font-size: 1.15em;
+    font-weight: 700;
+    color: #f0f2f5;
+    letter-spacing: -0.3px;
+}
+.landing-navbar-links {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 18px 48px;
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    background: rgba(8, 10, 22, 0.88);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border-bottom: 1px solid rgba(74, 158, 237, 0.08);
+    gap: 28px;
 }
-.landing-header-left {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-}
-.landing-header-logo-text {
-    font-size: 1.5em;
-    font-weight: 800;
-    color: #e2e8f0;
-    letter-spacing: -0.5px;
-}
-.landing-header-nav {
-    display: flex;
-    align-items: center;
-    gap: 32px;
-}
-.landing-header-nav a {
-    color: #7b8fb8;
+.landing-navbar-links a {
+    color: #8b95a5;
     text-decoration: none;
+    font-weight: 400;
+    font-size: 0.88em;
+}
+.landing-navbar-links a:hover {
+    color: #f0f2f5;
+}
+.landing-navbar-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.landing-navbar-btn-ghost {
+    padding: 6px 16px;
+    border-radius: 6px;
     font-weight: 500;
-    font-size: 0.92em;
-    transition: color 0.2s ease;
-    position: relative;
-}
-.landing-header-nav a:hover {
-    color: #4a9eed;
-}
-.landing-header-nav a::after {
-    content: '';
-    position: absolute;
-    bottom: -4px;
-    left: 0;
-    width: 0;
-    height: 2px;
-    background: #4a9eed;
-    transition: width 0.3s ease;
-}
-.landing-header-nav a:hover::after {
-    width: 100%;
-}
-.landing-btn {
-    display: inline-block;
-    padding: 11px 28px;
-    border-radius: 12px;
-    font-weight: 600;
-    font-size: 0.9em;
+    font-size: 0.85em;
+    color: #c0c8d4;
     text-decoration: none;
     cursor: pointer;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     border: none;
+    background: transparent;
 }
-.landing-btn-primary {
-    background: linear-gradient(135deg, #2563eb, #3b82f6);
+.landing-navbar-btn-ghost:hover {
+    color: #f0f2f5;
+}
+.landing-navbar-btn-primary {
+    padding: 7px 18px;
+    border-radius: 6px;
+    font-weight: 500;
+    font-size: 0.85em;
     color: white;
-    box-shadow: 0 4px 20px rgba(37, 99, 235, 0.3);
+    background: #2563eb;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
 }
-.landing-btn-primary:hover {
-    background: linear-gradient(135deg, #1d4ed8, #2563eb);
-    box-shadow: 0 8px 32px rgba(37, 99, 235, 0.4);
-    transform: translateY(-2px);
+.landing-navbar-btn-primary:hover {
+    background: #1d4ed8;
 }
-.landing-btn-secondary {
-    background: rgba(74, 158, 237, 0.08);
-    color: #4a9eed;
-    border: 1px solid rgba(74, 158, 237, 0.25);
-}
-.landing-btn-secondary:hover {
-    background: rgba(74, 158, 237, 0.16);
-    border-color: rgba(74, 158, 237, 0.45);
-    transform: translateY(-1px);
-}
+
 .landing-hero {
-    text-align: center;
-    padding: 100px 48px 72px 48px;
-    max-width: 840px;
+    padding: 100px 40px 60px 40px;
+    max-width: 720px;
     margin: 0 auto;
+    text-align: center;
+}
+@media (max-width: 768px) {
+    .landing-hero { padding: 60px 16px 40px 16px; }
+    .landing-hero h1 { font-size: 1.8em !important; }
 }
 .landing-hero h1 {
-    font-size: 3em;
-    font-weight: 800;
-    color: #e2e8f0;
-    letter-spacing: -1.5px;
+    font-size: 2.8em;
+    font-weight: 700;
+    color: #f0f2f5;
+    letter-spacing: -1px;
     line-height: 1.15;
-    margin-bottom: 20px;
+    margin-bottom: 16px;
 }
 .landing-hero h1 span {
-    background: linear-gradient(135deg, #4a9eed, #60a5fa, #818cf8);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    color: #6ba1eb;
 }
 .landing-hero p {
-    font-size: 1.18em;
-    color: #7b8fb8;
+    font-size: 1.05em;
+    color: #8b95a5;
     line-height: 1.7;
-    margin-bottom: 40px;
-    max-width: 640px;
+    margin-bottom: 36px;
+    max-width: 560px;
     margin-left: auto;
     margin-right: auto;
 }
-.landing-cards {
+.landing-hero-cta {
+    display: inline-block;
+    padding: 12px 32px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.95em;
+    color: white;
+    background: #2563eb;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
+}
+.landing-hero-cta:hover {
+    background: #1d4ed8;
+}
+.landing-hero-login {
+    display: block;
+    margin-top: 14px;
+    font-size: 0.85em;
+    color: #8b95a5;
+    text-decoration: none;
+    cursor: pointer;
+}
+.landing-hero-login:hover {
+    color: #f0f2f5;
+}
+
+.landing-social-proof {
     display: flex;
-    gap: 28px;
+    gap: 40px;
     justify-content: center;
     flex-wrap: wrap;
-    padding: 0 48px 72px 48px;
-    max-width: 1060px;
+    padding: 40px 40px 0 40px;
+    max-width: 800px;
     margin: 0 auto;
+}
+@media (max-width: 768px) {
+    .landing-social-proof { gap: 20px; padding: 24px 16px 0 16px; }
+}
+.landing-social-proof-item {
+    text-align: center;
+}
+.landing-social-proof-num {
+    font-size: 1.6em;
+    font-weight: 700;
+    color: #f0f2f5;
+}
+.landing-social-proof-label {
+    font-size: 0.78em;
+    color: #8b95a5;
+    margin-top: 2px;
+}
+
+.landing-cards {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    flex-wrap: wrap;
+    padding: 60px 40px;
+    max-width: 960px;
+    margin: 0 auto;
+}
+@media (max-width: 768px) {
+    .landing-cards { padding: 32px 16px; flex-direction: column; align-items: center; }
 }
 .landing-card {
     flex: 1;
-    min-width: 260px;
-    max-width: 320px;
-    background: linear-gradient(135deg, rgba(15, 20, 38, 0.8), rgba(12, 16, 30, 0.5));
-    border: 1px solid rgba(74, 158, 237, 0.1);
-    border-radius: 20px;
-    padding: 36px 28px;
-    text-align: center;
-    transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    min-width: 240px;
+    max-width: 300px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    padding: 28px 24px;
+    text-align: left;
 }
 .landing-card:hover {
-    border-color: rgba(74, 158, 237, 0.3);
-    box-shadow: 0 12px 40px rgba(74, 158, 237, 0.1);
-    transform: translateY(-6px);
+    border-color: rgba(255,255,255,0.1);
 }
 .landing-card-icon {
-    font-size: 2.6em;
-    margin-bottom: 20px;
-    background: linear-gradient(135deg, #2563eb, #4a9eed);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    font-size: 1.4em;
+    margin-bottom: 14px;
+    color: #6ba1eb;
 }
 .landing-card h3 {
-    font-size: 1.2em;
-    font-weight: 700;
-    color: #e2e8f0;
-    margin-bottom: 10px;
+    font-size: 1em;
+    font-weight: 600;
+    color: #f0f2f5;
+    margin-bottom: 6px;
 }
 .landing-card p {
-    font-size: 0.9em;
-    color: #7b8fb8;
-    line-height: 1.6;
+    font-size: 0.85em;
+    color: #8b95a5;
+    line-height: 1.5;
 }
 .landing-steps {
-    padding: 72px 48px;
-    max-width: 960px;
+    padding: 60px 40px;
+    max-width: 880px;
     margin: 0 auto;
     text-align: center;
-    background: rgba(14, 18, 35, 0.3);
-    border-radius: 24px;
-    margin-bottom: 48px;
+    background: rgba(255,255,255,0.015);
+    border: 1px solid rgba(255,255,255,0.04);
+    border-radius: 8px;
+    margin-bottom: 40px;
+}
+@media (max-width: 768px) {
+    .landing-steps { padding: 32px 16px; }
 }
 .landing-steps h2 {
-    font-size: 2.2em;
-    font-weight: 800;
-    color: #e2e8f0;
-    margin-bottom: 48px;
-    letter-spacing: -0.5px;
+    font-size: 1.6em;
+    font-weight: 700;
+    color: #f0f2f5;
+    margin-bottom: 40px;
 }
 .landing-steps-grid {
     display: flex;
-    gap: 48px;
+    gap: 40px;
     justify-content: center;
     flex-wrap: wrap;
 }
 .landing-step {
     flex: 1;
     min-width: 200px;
-    max-width: 260px;
+    max-width: 240px;
 }
 .landing-step-num {
-    width: 52px;
-    height: 52px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #2563eb, #3b82f6);
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    background: #2563eb;
     color: white;
-    font-size: 1.3em;
-    font-weight: 800;
+    font-size: 1em;
+    font-weight: 700;
     display: flex;
     align-items: center;
     justify-content: center;
-    margin: 0 auto 20px auto;
-    box-shadow: 0 4px 16px rgba(37, 99, 235, 0.3);
+    margin: 0 auto 16px auto;
 }
 .landing-step h4 {
-    font-size: 1.1em;
-    font-weight: 700;
-    color: #e2e8f0;
-    margin-bottom: 8px;
+    font-size: 1em;
+    font-weight: 600;
+    color: #f0f2f5;
+    margin-bottom: 6px;
 }
 .landing-step p {
-    font-size: 0.88em;
-    color: #7b8fb8;
-    line-height: 1.6;
+    font-size: 0.85em;
+    color: #8b95a5;
+    line-height: 1.5;
 }
 .landing-footer {
     text-align: center;
-    padding: 48px;
-    border-top: 1px solid rgba(74, 158, 237, 0.08);
-    margin-top: 72px;
+    padding: 40px;
+    border-top: 1px solid rgba(255,255,255,0.04);
+    margin-top: 60px;
 }
 .landing-footer p {
-    color: #4a5678;
-    font-size: 0.85em;
+    color: #555e6e;
+    font-size: 0.82em;
     line-height: 1.8;
 }
 .landing-footer a {
-    color: #4a9eed;
+    color: #6ba1eb;
     text-decoration: none;
-    transition: color 0.2s ease;
 }
 .landing-footer a:hover {
-    color: #60a5fa;
+    color: #93bbf0;
 }
 
 .compare-bar {
@@ -903,118 +917,131 @@ div.stAlert {
     bottom: 0;
     left: 0;
     right: 0;
-    background: rgba(8, 10, 22, 0.95);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border-top: 1px solid rgba(74, 158, 237, 0.2);
-    padding: 18px 36px;
+    background: rgba(10, 12, 24, 0.95);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-top: 1px solid rgba(255,255,255,0.08);
+    padding: 14px 32px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     z-index: 999;
-    box-shadow: 0 -8px 32px rgba(0,0,0,0.4);
-    animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-@keyframes slideUp {
-    from { transform: translateY(100%); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
 }
 
 .section-alt {
-    background: rgba(14, 18, 35, 0.3);
-    border-radius: 20px;
-    padding: 32px 28px;
-    margin: 20px 0;
+    background: rgba(255,255,255,0.015);
+    border: 1px solid rgba(255,255,255,0.04);
+    border-radius: 8px;
+    padding: 24px 22px;
+    margin: 16px 0;
+}
+
+.admin-section {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    padding: 24px;
+    margin-bottom: 20px;
+}
+.admin-section-title {
+    font-size: 1.05em;
+    font-weight: 600;
+    color: #f0f2f5;
+    margin-bottom: 4px;
+}
+.admin-section-desc {
+    font-size: 0.82em;
+    color: #8b95a5;
+    margin-bottom: 16px;
 }
 
 .review-card {
-    background: linear-gradient(135deg, rgba(15, 20, 38, 0.7), rgba(12, 16, 30, 0.4));
-    border: 1px solid rgba(74, 158, 237, 0.08);
-    border-radius: 16px;
-    padding: 22px 24px;
-    margin-bottom: 14px;
-    transition: border-color 0.2s ease;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    padding: 18px 20px;
+    margin-bottom: 12px;
 }
 .review-card:hover {
-    border-color: rgba(74, 158, 237, 0.18);
+    border-color: rgba(255,255,255,0.1);
 }
 .review-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
 }
 .review-author {
     font-weight: 600;
-    color: #e2e8f0;
-    font-size: 0.95em;
+    color: #f0f2f5;
+    font-size: 0.9em;
 }
 .review-date {
-    color: #4a5678;
-    font-size: 0.8em;
+    color: #555e6e;
+    font-size: 0.78em;
 }
 .review-stars {
     color: #f59e0b;
-    font-size: 1.1em;
-    margin-bottom: 8px;
+    font-size: 1em;
+    margin-bottom: 6px;
 }
 .review-title {
     font-weight: 600;
-    color: #c8d6e5;
-    font-size: 0.95em;
-    margin-bottom: 6px;
+    color: #c0c8d4;
+    font-size: 0.9em;
+    margin-bottom: 4px;
 }
 .review-comment {
-    color: #8b9dba;
-    font-size: 0.9em;
+    color: #8b95a5;
+    font-size: 0.88em;
     line-height: 1.6;
 }
 
 .product-detail-header {
     display: flex;
     align-items: center;
-    gap: 24px;
-    margin-bottom: 28px;
-    padding: 24px;
-    background: linear-gradient(135deg, rgba(15, 20, 38, 0.6), rgba(12, 16, 30, 0.3));
-    border: 1px solid rgba(74, 158, 237, 0.08);
-    border-radius: 20px;
+    gap: 20px;
+    margin-bottom: 24px;
+    padding: 20px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
 }
 .product-detail-score {
     text-align: center;
-    min-width: 110px;
+    min-width: 100px;
 }
 .product-detail-info h1 {
-    font-size: 1.8em;
-    font-weight: 800;
-    color: #e2e8f0;
-    margin-bottom: 6px;
+    font-size: 1.5em;
+    font-weight: 700;
+    color: #f0f2f5;
+    margin-bottom: 4px;
     line-height: 1.2;
 }
 .product-detail-info .brand {
-    color: #7b8fb8;
-    font-size: 1.05em;
+    color: #8b95a5;
+    font-size: 0.95em;
 }
 .ps-img {
-    width: 80px;
-    height: 80px;
+    width: 72px;
+    height: 72px;
     object-fit: contain;
-    border-radius: 14px;
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(74, 158, 237, 0.08);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
     flex-shrink: 0;
 }
 .ps-img-placeholder {
-    width: 80px;
-    height: 80px;
-    border-radius: 14px;
-    background: rgba(74, 158, 237, 0.05);
-    border: 1px solid rgba(74, 158, 237, 0.06);
+    width: 72px;
+    height: 72px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.04);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 2em;
-    color: rgba(74, 158, 237, 0.2);
+    font-size: 1.6em;
+    color: rgba(255,255,255,0.1);
     flex-shrink: 0;
 }
 </style>
@@ -1061,7 +1088,7 @@ def score_to_stars_10(score):
 
 def score_color_10(score):
     if not is_valid(score):
-        return "#8b9dc3"
+        return "#8b95a5"
     if score >= 7:
         return "#34d399"
     if score >= 4:
@@ -1910,7 +1937,7 @@ def render_catalog_results(products):
         n = len(st.session_state.compare_list)
         st.markdown(f"""
         <div class='compare-bar'>
-            <span style='color:#e2e8f0;font-weight:600;font-size:1em;'>Comparateur ({n} produit{'s' if n > 1 else ''})</span>
+            <span style='color:#f0f2f5;font-weight:600;font-size:1em;'>Comparateur ({n} produit{'s' if n > 1 else ''})</span>
         </div>
         """, unsafe_allow_html=True)
         if st.button(f"Ouvrir le comparateur ({n})", type="primary", key="open_compare_bar"):
@@ -2015,7 +2042,7 @@ def render_sidebar():
         plan_label = "Pro" if user["plan"] == "pro" else "Gratuit"
         st.markdown(f"""
         <div class='sidebar-user'>
-            <div class='sidebar-user-name'><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b9dc3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>{html_module.escape(user['display_name'])}</div>
+            <div class='sidebar-user-name'><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b95a5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>{html_module.escape(user['display_name'])}</div>
             <div class='sidebar-user-email'>{html_module.escape(user['email'])}</div>
             <div class='sidebar-user-plan'>Plan: {plan_label}</div>
         </div>
@@ -2047,71 +2074,87 @@ def render_sidebar():
 def page_landing():
     logo_html = ""
     if LOGO_B64:
-        logo_html = f"<img src='data:image/png;base64,{LOGO_B64}' style='height:36px;width:auto;' />"
+        logo_html = f"<img src='data:image/png;base64,{LOGO_B64}' style='height:28px;width:auto;' />"
 
     st.markdown(f"""
-    <div class='landing-header'>
-        <div class='landing-header-left'>
+    <div class='landing-navbar'>
+        <div class='landing-navbar-left'>
             {logo_html}
-            <span class='landing-header-logo-text'>ProteinScan</span>
+            <span class='landing-navbar-brand'>ProteinScan</span>
         </div>
-        <div class='landing-header-nav'>
+        <div class='landing-navbar-links'>
             <a href='#fonctionnalites'>Fonctionnalites</a>
             <a href='#comment-ca-marche'>Comment ca marche</a>
+            <a href='#comparateur'>Comparateur</a>
+        </div>
+        <div class='landing-navbar-right'>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-    header_col1, header_col2, header_col3 = st.columns([6, 1, 1])
-    with header_col2:
-        if st.button("Se connecter", key="header_login", use_container_width=True):
+    nav_col1, nav_col2, nav_col3 = st.columns([6, 1, 1])
+    with nav_col2:
+        if st.button("Se connecter", key="header_login"):
             st.session_state.page = "login"
             st.rerun()
-    with header_col3:
-        if st.button("Creer un compte", key="header_register", type="primary", use_container_width=True):
+    with nav_col3:
+        if st.button("Creer un compte", key="header_register", type="primary"):
             st.session_state.page = "register"
             st.rerun()
 
-    hero_logo = ""
-    if LOGO_B64:
-        hero_logo = f"<img src='data:image/png;base64,{LOGO_B64}' style='height:120px;width:auto;margin-bottom:24px;' /><br/>"
+    stats = cached_get_catalog_stats()
+    total_products = stats.get("total_products", 0)
+    total_brands = stats.get("unique_brands", 0) if "unique_brands" in stats else "50+"
 
     st.markdown(f"""
     <div class='landing-hero'>
-        {hero_logo}
-        <h1>Compare les proteines, trouve le <span>meilleur rapport qualite/prix</span></h1>
-        <p>Prix actualises, macros, cout au gramme de proteine, scores qualite detailles.<br/>L'outil de reference pour choisir ta whey en France.</p>
+        <h1>Comparez les whey <span>intelligemment.</span></h1>
+        <p>Analyse automatique des macros, aminogramme, score qualite et prix au gramme de proteine.</p>
     </div>
     """, unsafe_allow_html=True)
 
-    col_cta_left, col_cta_mid, col_cta_right = st.columns([1, 2, 1])
+    col_cta_left, col_cta_mid, col_cta_right = st.columns([2, 2, 2])
     with col_cta_mid:
         if st.button("Commencer gratuitement", type="primary", use_container_width=True, key="hero_cta"):
             st.session_state.page = "register"
             st.rerun()
-
-    col_login_left, col_login_mid, col_login_right = st.columns([1, 2, 1])
-    with col_login_mid:
-        if st.button("Se connecter", use_container_width=True, key="hero_login"):
+        if st.button("Se connecter", use_container_width=False, key="hero_login"):
             st.session_state.page = "login"
             st.rerun()
+
+    st.markdown(f"""
+    <div class='landing-social-proof'>
+        <div class='landing-social-proof-item'>
+            <div class='landing-social-proof-num'>+{total_products}</div>
+            <div class='landing-social-proof-label'>produits analyses</div>
+        </div>
+        <div class='landing-social-proof-item'>
+            <div class='landing-social-proof-num'>{total_brands}</div>
+            <div class='landing-social-proof-label'>marques detectees</div>
+        </div>
+        <div class='landing-social-proof-item'>
+            <div class='landing-social-proof-num'>Quotidien</div>
+            <div class='landing-social-proof-label'>prix actualises</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     st.markdown("""
     <div class='landing-cards' id='fonctionnalites'>
         <div class='landing-card'>
-            <div class='landing-card-icon'>&#x2694;</div>
-            <h3>Comparaison en 1 clic</h3>
-            <p>Compare jusqu'a 5 proteines cote a cote : prix, macros, ingredients, score qualite.</p>
+            <div class='landing-card-icon'>&#128269;</div>
+            <h3>Comparaison instantanee</h3>
+            <p>Comparez jusqu'a 5 produits cote a cote.</p>
         </div>
         <div class='landing-card'>
-            <div class='landing-card-icon'>&#x2605;</div>
+            <div class='landing-card-icon'>&#11088;</div>
             <h3>Score qualite/prix</h3>
-            <p>Un algorithme transparent qui note chaque produit sur 10 : proteique, sante, prix.</p>
+            <p>Algorithme transparent base sur proteines, ingredients et cout.</p>
         </div>
         <div class='landing-card'>
-            <div class='landing-card-icon'>&#x21C4;</div>
-            <h3>Suivi promos & historique</h3>
-            <p>Prix actualises automatiquement. Suis l'evolution des offres du marche.</p>
+            <div class='landing-card-icon'>&#128200;</div>
+            <h3>Historique des prix</h3>
+            <p>Suivi automatique des promotions.</p>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -2122,18 +2165,18 @@ def page_landing():
         <div class='landing-steps-grid'>
             <div class='landing-step'>
                 <div class='landing-step-num'>1</div>
-                <h4>Tu cherches</h4>
-                <p>Parcours le catalogue ou lance une recherche pour decouvrir les meilleures wheys du marche francais.</p>
+                <h4>Chercher</h4>
+                <p>Parcourez le catalogue ou lancez une recherche pour decouvrir les meilleures wheys.</p>
             </div>
             <div class='landing-step'>
                 <div class='landing-step-num'>2</div>
-                <h4>Tu compares</h4>
-                <p>Ajoute tes favoris au comparateur et analyse les differences cote a cote.</p>
+                <h4>Comparer</h4>
+                <p>Ajoutez vos favoris au comparateur et analysez les differences.</p>
             </div>
             <div class='landing-step'>
                 <div class='landing-step-num'>3</div>
-                <h4>Tu decides</h4>
-                <p>Consulte les scores, les avis de la communaute et choisis le meilleur produit pour toi.</p>
+                <h4>Decider</h4>
+                <p>Consultez les scores et les avis, choisissez le meilleur produit.</p>
             </div>
         </div>
     </div>
@@ -2256,9 +2299,9 @@ def page_register():
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("""
-    <div style='text-align:center;margin-top:16px;padding:12px 20px;background:linear-gradient(135deg, rgba(12,17,30,0.6), rgba(10,14,24,0.4));border:1px solid rgba(74,158,237,0.12);border-radius:12px;color:#6b85b0;font-size:0.85em;max-width:420px;margin-left:auto;margin-right:auto;'>
-        <span style='color:#4a9eed;font-weight:700;'>Plan Gratuit</span> : 3 scans par mois &nbsp;|&nbsp;
-        <span style='color:#4a9eed;font-weight:700;'>Plan Pro</span> : scans illimites (bientot disponible)
+    <div style='text-align:center;margin-top:16px;padding:12px 20px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px;color:#8b95a5;font-size:0.85em;max-width:420px;margin-left:auto;margin-right:auto;'>
+        <span style='color:#6ba1eb;font-weight:700;'>Plan Gratuit</span> : 3 scans par mois &nbsp;|&nbsp;
+        <span style='color:#6ba1eb;font-weight:700;'>Plan Pro</span> : scans illimites (bientot disponible)
     </div>
     """, unsafe_allow_html=True)
 
@@ -2566,9 +2609,9 @@ def page_compare():
             color = score_color_10(s_final)
 
             st.markdown(f"""
-            <div style='text-align:center;padding:16px 8px;background:linear-gradient(135deg, rgba(17,24,39,0.7), rgba(15,20,35,0.4));border:1px solid rgba(74,158,237,0.15);border-radius:14px;margin-bottom:12px;'>
-                <div style='font-size:0.85em;color:#8b9dc3;'>{html_module.escape(brand)}</div>
-                <div style='font-size:1em;font-weight:700;color:#e2e8f0;margin:4px 0;'>{html_module.escape(name[:60])}</div>
+            <div style='text-align:center;padding:16px 8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px;margin-bottom:12px;'>
+                <div style='font-size:0.85em;color:#8b95a5;'>{html_module.escape(brand)}</div>
+                <div style='font-size:1em;font-weight:700;color:#f0f2f5;margin:4px 0;'>{html_module.escape(name[:60])}</div>
                 <div style='font-size:1.6em;font-weight:800;color:{color};'>{score_display}</div>
             </div>
             """, unsafe_allow_html=True)
@@ -2657,15 +2700,15 @@ def page_product():
 
     product_image_url = product.get("image_url", "")
     if product_image_url:
-        product_img_html = f"<img src='{html_module.escape(product_image_url)}' style='width:120px;height:120px;object-fit:contain;border-radius:12px;background:rgba(255,255,255,0.06);border:1px solid rgba(74,158,237,0.1);' alt='' onerror=\"this.style.display='none';this.nextElementSibling.style.display='flex';\" /><div class='ps-img-placeholder' style='display:none;width:120px;height:120px;font-size:3em;border-radius:12px;'>🥛</div>"
+        product_img_html = f"<img src='{html_module.escape(product_image_url)}' style='width:120px;height:120px;object-fit:contain;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);' alt='' onerror=\"this.style.display='none';this.nextElementSibling.style.display='flex';\" /><div class='ps-img-placeholder' style='display:none;width:120px;height:120px;font-size:3em;border-radius:8px;'>🥛</div>"
     else:
-        product_img_html = "<div class='ps-img-placeholder' style='width:120px;height:120px;font-size:3em;border-radius:12px;'>🥛</div>"
+        product_img_html = "<div class='ps-img-placeholder' style='width:120px;height:120px;font-size:3em;border-radius:8px;'>🥛</div>"
 
     st.markdown(f"""
     <div class='product-detail-header'>
         <div class='product-detail-score'>
             <div style='font-size:2.2em;font-weight:800;color:{color};'>{score_display}</div>
-            <div style='font-size:0.8em;color:#8b9dc3;'>Note finale</div>
+            <div style='font-size:0.8em;color:#8b95a5;'>Note finale</div>
         </div>
         <div style='flex-shrink:0;'>
             {product_img_html}
@@ -2805,11 +2848,11 @@ def page_product():
                 url_o = o.get("url", "")
                 conf = o.get("confidence", 0)
                 st.markdown(f"""
-                <div style='background:linear-gradient(135deg, rgba(17,24,39,0.6), rgba(15,20,35,0.3));border:1px solid rgba(74,158,237,0.12);border-radius:12px;padding:14px 16px;margin-bottom:8px;'>
-                    <div style='font-weight:600;color:#e2e8f0;font-size:0.95em;'>{html_module.escape(str(merch))}</div>
-                    <div style='color:#4a9eed;font-size:1.1em;font-weight:700;margin:4px 0;'>{f'{prix_o:.2f} EUR' if prix_o else 'Prix N/D'} {f'({pkg_o:.0f} EUR/kg)' if pkg_o else ''}</div>
-                    <div style='font-size:0.8em;color:#5a6a8a;'>Confiance: {conf:.0%}</div>
-                    {'<a href="' + url_o + '" target="_blank" style="color:#4a9eed;font-size:0.85em;">Voir l offre</a>' if url_o else ''}
+                <div style='background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:14px 16px;margin-bottom:8px;'>
+                    <div style='font-weight:600;color:#f0f2f5;font-size:0.95em;'>{html_module.escape(str(merch))}</div>
+                    <div style='color:#6ba1eb;font-size:1.1em;font-weight:700;margin:4px 0;'>{f'{prix_o:.2f} EUR' if prix_o else 'Prix N/D'} {f'({pkg_o:.0f} EUR/kg)' if pkg_o else ''}</div>
+                    <div style='font-size:0.8em;color:#8b95a5;'>Confiance: {conf:.0%}</div>
+                    {'<a href="' + url_o + '" target="_blank" style="color:#6ba1eb;font-size:0.85em;">Voir l offre</a>' if url_o else ''}
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -2841,9 +2884,9 @@ def page_product():
                 stars_str += "<span style='color:#f59e0b;font-size:1.3em;'>&#9733;</span>"
             else:
                 stars_str += "<span style='color:#3a4a6a;font-size:1.3em;'>&#9733;</span>"
-        st.markdown(f"<div>{stars_str} <span style='color:#e2e8f0;font-weight:600;'>{avg_r:.1f}/5</span> <span style='color:#8b9dc3;font-size:0.9em;'>({count_r} avis)</span></div>", unsafe_allow_html=True)
+        st.markdown(f"<div>{stars_str} <span style='color:#f0f2f5;font-weight:600;'>{avg_r:.1f}/5</span> <span style='color:#8b95a5;font-size:0.9em;'>({count_r} avis)</span></div>", unsafe_allow_html=True)
     else:
-        st.markdown("<div style='color:#8b9dc3;'>Aucun avis pour le moment. Soyez le premier !</div>", unsafe_allow_html=True)
+        st.markdown("<div style='color:#8b95a5;'>Aucun avis pour le moment. Soyez le premier !</div>", unsafe_allow_html=True)
 
     with st.expander("Ecrire un avis", expanded=count_r == 0):
         with st.form("review_form"):
@@ -2889,7 +2932,7 @@ def page_product():
             rev_text = html_module.escape(rev.get("comment", ""))
             rev_purchased = rev.get("purchased_from", "")
 
-            purchased_html = f"<div style='font-size:0.8em;color:#5a6a8a;margin-top:4px;'>Achete sur : {html_module.escape(rev_purchased)}</div>" if rev_purchased else ""
+            purchased_html = f"<div style='font-size:0.8em;color:#8b95a5;margin-top:4px;'>Achete sur : {html_module.escape(rev_purchased)}</div>" if rev_purchased else ""
 
             st.markdown(f"""
             <div class='review-card'>
@@ -2928,13 +2971,12 @@ def page_admin():
     with col4:
         st.metric("A revoir", stats["products_needing_review"])
 
-    st.divider()
+    st.markdown("")
 
     disc_col, refresh_col = st.columns(2)
 
     with disc_col:
-        st.subheader("🔍 Discovery")
-        st.markdown("Recherche de nouveaux produits whey via Brave Search avec diversification par marque et domaine.")
+        st.markdown("<div class='admin-section'><div class='admin-section-title'>Discovery</div><div class='admin-section-desc'>Recherche de nouveaux produits whey via Brave Search.</div>", unsafe_allow_html=True)
 
         if not api_key:
             st.warning("Cle API Brave Search non configuree.")
@@ -3007,10 +3049,10 @@ def page_admin():
                     progress_bar.empty()
                     detail_text.empty()
                     status_container.error(f"Erreur Discovery : {e}")
+        st.markdown("</div>", unsafe_allow_html=True)
 
     with refresh_col:
-        st.subheader("🔄 Refresh")
-        st.markdown("Met a jour les prix et la disponibilite des offres existantes.")
+        st.markdown("<div class='admin-section'><div class='admin-section-title'>Refresh</div><div class='admin-section-desc'>Met a jour les prix et la disponibilite des offres existantes.</div>", unsafe_allow_html=True)
 
         if st.button("🔄 Lancer un Refresh", type="primary", use_container_width=True, key="btn_refresh"):
             status_container_r = st.empty()
@@ -3042,11 +3084,11 @@ def page_admin():
                 progress_bar_r.empty()
                 detail_text_r.empty()
                 status_container_r.error(f"Erreur Refresh : {e}")
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    st.divider()
+    st.markdown("")
 
-    st.subheader("🧬 Re-analyse nutritionnelle")
-    st.markdown("Re-scrape les produits pour extraire l'aminogramme complet, les macros etendus (glucides, lipides, kcal, sel...) et les donnees manquantes via le pipeline multi-source (HTML + OCR).")
+    st.markdown("<div class='admin-section'><div class='admin-section-title'>Re-analyse nutritionnelle</div><div class='admin-section-desc'>Extraction de l'aminogramme complet, macros etendus et donnees manquantes via le pipeline multi-source (HTML + OCR).</div>", unsafe_allow_html=True)
 
     from db import get_connection
     _conn_check = get_connection()
@@ -3095,9 +3137,11 @@ def page_admin():
                 status_ra.error(f"Erreur re-analyse : {e}")
     else:
         st.success("Tous les produits ont deja leur aminogramme et macros complets.")
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    st.divider()
-    st.subheader("📋 Historique des pipelines")
+    st.markdown("")
+
+    st.markdown("<div class='admin-section'><div class='admin-section-title'>Historique des pipelines</div><div class='admin-section-desc'>Dernieres executions des pipelines de donnees.</div>", unsafe_allow_html=True)
 
     runs = get_pipeline_runs(limit=20)
     if not runs:
@@ -3130,8 +3174,11 @@ def page_admin():
             hide_index=True,
         )
 
-    st.divider()
-    st.subheader("Moderation des avis")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("")
+
+    st.markdown("<div class='admin-section'><div class='admin-section-title'>Moderation des avis</div><div class='admin-section-desc'>Avis signales par les utilisateurs.</div>", unsafe_allow_html=True)
     flagged = get_flagged_reviews()
     if not flagged:
         st.info("Aucun avis signale.")
@@ -3143,10 +3190,10 @@ def page_admin():
                 rev_date = rev_date.strftime("%d/%m/%Y %H:%M")
             st.markdown(f"""
             <div class='review-card'>
-                <div style='font-weight:600;color:#e2e8f0;'>{html_module.escape(rev.get('product_name', ''))}</div>
-                <div style='color:#8b9dc3;font-size:0.85em;'>Par {html_module.escape(rev.get('display_name', ''))} - {rev_date}</div>
+                <div style='font-weight:600;color:#f0f2f5;'>{html_module.escape(rev.get('product_name', ''))}</div>
+                <div style='color:#8b95a5;font-size:0.85em;'>Par {html_module.escape(rev.get('display_name', ''))} - {rev_date}</div>
                 <div style='color:#f59e0b;margin:4px 0;'>{'&#9733;' * rev.get('rating', 0)}{'&#9734;' * (5 - rev.get('rating', 0))}</div>
-                <div style='color:#c8d6e5;'>{html_module.escape(rev.get('comment', ''))}</div>
+                <div style='color:#c0c8d4;'>{html_module.escape(rev.get('comment', ''))}</div>
             </div>
             """, unsafe_allow_html=True)
             if st.button(f"Masquer cet avis", key=f"hide_rev_{rev['id']}"):
@@ -3154,9 +3201,11 @@ def page_admin():
                 st.success("Avis masque.")
                 st.rerun()
 
-    st.divider()
-    st.subheader("🏥 Discovery Health")
-    st.markdown("Vue d'ensemble de la couverture du catalogue : domaines, marques detectees, marques manquantes.")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("")
+
+    st.markdown("<div class='admin-section'><div class='admin-section-title'>Discovery Health</div><div class='admin-section-desc'>Couverture du catalogue : domaines, marques detectees, marques manquantes.</div>", unsafe_allow_html=True)
 
     try:
         disc_stats = get_discovery_stats_from_db()
@@ -3206,10 +3255,11 @@ def page_admin():
 
     except Exception as e:
         st.error(f"Erreur chargement des stats Discovery Health : {e}")
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    st.divider()
-    st.subheader("🔎 Debug : Validateur de page produit")
-    st.markdown("Testez si une URL sera acceptee ou rejetee par le validateur strict.")
+    st.markdown("")
+
+    st.markdown("<div class='admin-section'><div class='admin-section-title'>Debug : Validateur de page</div><div class='admin-section-desc'>Testez si une URL sera acceptee ou rejetee par le validateur strict.</div>", unsafe_allow_html=True)
 
     debug_url = st.text_input("URL a tester", placeholder="https://example.fr/produit/whey-isolate-1kg", key="debug_url")
 
@@ -3292,9 +3342,11 @@ def page_admin():
             with st.expander("Donnees brutes JSON"):
                 st.json(debug_result)
 
-    st.divider()
-    st.subheader("🔗 Debug : Resolveur d'URL whey")
-    st.markdown("Testez la resolution de liens : si l'URL n'est pas une page produit whey, le resolveur cherche le meilleur lien produit sur la page.")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("")
+
+    st.markdown("<div class='admin-section'><div class='admin-section-title'>Debug : Resolveur d'URL whey</div><div class='admin-section-desc'>Testez la resolution de liens : si l'URL n'est pas une page produit whey, le resolveur cherche le meilleur lien produit.</div>", unsafe_allow_html=True)
 
     resolver_url = st.text_input("URL a resoudre", placeholder="https://example.fr/marque/whey", key="resolver_url")
 
@@ -3348,6 +3400,7 @@ def page_admin():
 
             with st.expander("JSON complet"):
                 st.json(resolve_result)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 # ── ROUTER ──
