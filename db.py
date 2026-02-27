@@ -18,10 +18,28 @@ def _get_pool():
     return _connection_pool
 
 
+def _check_conn(conn):
+    try:
+        if conn.closed:
+            return False
+        cur = conn.cursor()
+        cur.execute("SELECT 1")
+        cur.close()
+        return True
+    except Exception:
+        return False
+
+
 def get_connection():
     try:
         pool = _get_pool()
         conn = pool.getconn()
+        if not _check_conn(conn):
+            try:
+                pool.putconn(conn, close=True)
+            except Exception:
+                pass
+            conn = psycopg2.connect(os.environ["DATABASE_URL"])
         conn.autocommit = False
         return conn
     except Exception:
@@ -30,8 +48,9 @@ def get_connection():
 
 def release_connection(conn):
     try:
-        if not conn.closed:
-            conn.rollback()
+        if conn.closed:
+            return
+        conn.rollback()
         pool = _get_pool()
         pool.putconn(conn)
     except Exception:
@@ -333,67 +352,72 @@ def get_scan_limit(plan: str) -> int | None:
 def save_scan(user_id: int, products: list[dict]) -> int:
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO scans (user_id, product_count) VALUES (%s, %s) RETURNING id",
-        (user_id, len(products)),
-    )
-    scan_id = cur.fetchone()[0]
-
-    for p in products:
+    try:
         cur.execute(
-            """INSERT INTO scan_items
-            (scan_id, nom, marque, url, prix, devise, disponibilite, poids_kg,
-             prix_par_kg, proteines_100g, type_whey, made_in_france,
-             origin_label, origin_confidence,
-             has_sucralose, has_acesulfame_k, has_aspartame,
-             has_aminogram, mentions_bcaa, ingredients,
-             has_artificial_flavors, has_thickeners, has_colorants, ingredient_count,
-             bcaa_per_100g_prot, leucine_g, isoleucine_g, valine_g,
-             profil_suspect, score_proteique,
-             score_prix, score_sante, score_global, date_recuperation)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-            (
-                scan_id,
-                p.get("nom"),
-                p.get("marque"),
-                p.get("url"),
-                p.get("prix"),
-                p.get("devise"),
-                p.get("disponibilite"),
-                p.get("poids_kg"),
-                p.get("prix_par_kg"),
-                p.get("proteines_100g"),
-                p.get("type_whey"),
-                p.get("made_in_france", False),
-                p.get("origin_label", "Inconnu"),
-                p.get("origin_confidence", 0.3),
-                p.get("has_sucralose", False),
-                p.get("has_acesulfame_k", False),
-                p.get("has_aspartame", False),
-                p.get("has_aminogram", False),
-                p.get("mentions_bcaa", False),
-                p.get("ingredients"),
-                p.get("has_artificial_flavors", False),
-                p.get("has_thickeners", False),
-                p.get("has_colorants", False),
-                p.get("ingredient_count"),
-                p.get("bcaa_per_100g_prot"),
-                p.get("leucine_g"),
-                p.get("isoleucine_g"),
-                p.get("valine_g"),
-                p.get("profil_suspect", False),
-                p.get("score_proteique"),
-                p.get("score_prix"),
-                p.get("score_sante"),
-                p.get("score_global"),
-                p.get("date_recuperation"),
-            ),
+            "INSERT INTO scans (user_id, product_count) VALUES (%s, %s) RETURNING id",
+            (user_id, len(products)),
         )
+        scan_id = cur.fetchone()[0]
 
-    conn.commit()
-    cur.close()
-    release_connection(conn)
-    return scan_id
+        for p in products:
+            cur.execute(
+                """INSERT INTO scan_items
+                (scan_id, nom, marque, url, prix, devise, disponibilite, poids_kg,
+                 prix_par_kg, proteines_100g, type_whey, made_in_france,
+                 origin_label, origin_confidence,
+                 has_sucralose, has_acesulfame_k, has_aspartame,
+                 has_aminogram, mentions_bcaa, ingredients,
+                 has_artificial_flavors, has_thickeners, has_colorants, ingredient_count,
+                 bcaa_per_100g_prot, leucine_g, isoleucine_g, valine_g,
+                 profil_suspect, score_proteique,
+                 score_prix, score_sante, score_global, date_recuperation)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                (
+                    scan_id,
+                    p.get("nom"),
+                    p.get("marque"),
+                    p.get("url"),
+                    p.get("prix"),
+                    p.get("devise"),
+                    p.get("disponibilite"),
+                    p.get("poids_kg"),
+                    p.get("prix_par_kg"),
+                    p.get("proteines_100g"),
+                    p.get("type_whey"),
+                    p.get("made_in_france", False),
+                    p.get("origin_label", "Inconnu"),
+                    p.get("origin_confidence", 0.3),
+                    p.get("has_sucralose", False),
+                    p.get("has_acesulfame_k", False),
+                    p.get("has_aspartame", False),
+                    p.get("has_aminogram", False),
+                    p.get("mentions_bcaa", False),
+                    p.get("ingredients"),
+                    p.get("has_artificial_flavors", False),
+                    p.get("has_thickeners", False),
+                    p.get("has_colorants", False),
+                    p.get("ingredient_count"),
+                    p.get("bcaa_per_100g_prot"),
+                    p.get("leucine_g"),
+                    p.get("isoleucine_g"),
+                    p.get("valine_g"),
+                    p.get("profil_suspect", False),
+                    p.get("score_proteique"),
+                    p.get("score_prix"),
+                    p.get("score_sante"),
+                    p.get("score_global"),
+                    p.get("date_recuperation"),
+                ),
+            )
+
+        conn.commit()
+        return scan_id
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        release_connection(conn)
 
 
 def get_user_scans(user_id: int, limit: int = 20) -> list[dict]:
