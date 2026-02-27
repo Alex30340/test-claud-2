@@ -2608,11 +2608,60 @@ def page_product():
     with detail_col:
         st.subheader("Details nutritionnels")
         st.markdown(f"- **Proteines / 100g** : {prot:.1f}g" if is_valid(prot) else "- **Proteines / 100g** : N/D")
+
+        kcal = product.get("kcal_per_100g")
+        carbs = product.get("carbs_per_100g")
+        sugar = product.get("sugar_per_100g")
+        fat = product.get("fat_per_100g")
+        sat_fat = product.get("sat_fat_per_100g")
+        salt = product.get("salt_per_100g")
+        fiber = product.get("fiber_per_100g")
+
+        if is_valid(kcal):
+            st.markdown(f"- **Calories** : {kcal:.0f} kcal")
+        if is_valid(carbs):
+            sugar_txt = f" (dont sucres {sugar:.1f}g)" if is_valid(sugar) else ""
+            st.markdown(f"- **Glucides** : {carbs:.1f}g{sugar_txt}")
+        if is_valid(fat):
+            sat_txt = f" (dont sat. {sat_fat:.1f}g)" if is_valid(sat_fat) else ""
+            st.markdown(f"- **Lipides** : {fat:.1f}g{sat_txt}")
+        if is_valid(salt):
+            st.markdown(f"- **Sel** : {salt:.2f}g")
+        if is_valid(fiber):
+            st.markdown(f"- **Fibres** : {fiber:.1f}g")
+
         st.markdown(f"- **BCAA / 100g prot** : {bcaa:.1f}g" if is_valid(bcaa) else "- **BCAA / 100g prot** : N/D")
         st.markdown(f"- **Leucine** : {leucine:.1f}g" if is_valid(leucine) else "- **Leucine** : N/D")
         st.markdown(f"- **Type de whey** : {type_whey.capitalize() if type_whey != 'unknown' else 'Non determine'}")
         st.markdown(f"- **Origine** : {origin}")
         st.markdown(f"- **Nombre d'ingredients** : {ingr_count}" if is_valid(ingr_count) else "- **Ingredients** : N/D")
+
+        macro_ok = product.get("macro_coherent")
+        if macro_ok is False:
+            st.warning("Coherence macro suspecte (kcal vs macros)")
+        sources = product.get("nutrition_sources", "")
+        if sources:
+            st.caption(f"Sources: {sources}")
+
+        amino_full = product.get("amino_profile")
+        if amino_full and isinstance(amino_full, dict) and len(amino_full) > 0:
+            with st.expander(f"Aminogramme complet ({len(amino_full)} acides amines)"):
+                amino_base_label = product.get("amino_base", "unknown")
+                base_labels = {"per_100g_protein": "pour 100g de proteines", "per_100g": "pour 100g", "per_serving": "par dose"}
+                st.caption(f"Base: {base_labels.get(amino_base_label, amino_base_label)}")
+                amino_names_fr = {
+                    "leucine": "Leucine", "isoleucine": "Isoleucine", "valine": "Valine",
+                    "glutamine": "Glutamine", "arginine": "Arginine", "lysine": "Lysine",
+                    "methionine": "Methionine", "phenylalanine": "Phenylalanine",
+                    "threonine": "Threonine", "tryptophan": "Tryptophane",
+                    "histidine": "Histidine", "alanine": "Alanine", "glycine": "Glycine",
+                    "proline": "Proline", "serine": "Serine", "tyrosine": "Tyrosine",
+                    "aspartic_acid": "Acide aspartique", "cysteine": "Cysteine",
+                }
+                for k, v in sorted(amino_full.items(), key=lambda x: -x[1] if isinstance(x[1], (int, float)) else 0):
+                    label = amino_names_fr.get(k, k.replace("_", " ").capitalize())
+                    if isinstance(v, (int, float)):
+                        st.markdown(f"- **{label}** : {v:.2f}g")
 
         if ingredients:
             with st.expander("Liste des ingredients"):

@@ -1,0 +1,664 @@
+"""
+Multi-source nutrition extractor with confidence-based fusion and OCR fallback.
+
+Pipeline:
+  Source A - Structured data (JSON-LD, OpenGraph, microdata) → high confidence
+  Source B - HTML tables/sections (nutrition tables, amino tables) → high confidence
+  Source C - OCR on product images (nutrition labels) → medium confidence, only triggered if needed
+
+Each extracted value carries: value, unit, source, confidence, raw_snippet
+Fusion picks the highest-confidence source per field.
+"""
+
+import re
+import os
+import logging
+import httpx
+from typing import Any
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin
+
+logger = logging.getLogger(__name__)
+
+
+NUTRITION_FIELDS = [
+    "protein_per_100g", "carbs_per_100g", "sugar_per_100g",
+    "fat_per_100g", "sat_fat_per_100g", "kcal_per_100g",
+    "salt_per_100g", "fiber_per_100g",
+]
+
+AMINO_FIELDS = [
+    "leucine", "isoleucine", "valine",
+    "glutamine", "arginine", "lysine",
+    "methionine", "phenylalanine", "threonine",
+    "tryptophan", "histidine", "alanine",
+    "glycine", "proline", "serine",
+    "tyrosine", "aspartic_acid", "cysteine",
+]
+
+FIELD_ALIASES = {
+    "protéines": "protein_per_100g", "proteines": "protein_per_100g",
+    "protein": "protein_per_100g", "proteins": "protein_per_100g",
+    "protéine": "protein_per_100g",
+    "glucides": "carbs_per_100g", "carbohydrates": "carbs_per_100g",
+    "carbohydrate": "carbs_per_100g", "glucide": "carbs_per_100g",
+    "carbs": "carbs_per_100g",
+    "sucres": "sugar_per_100g", "sugars": "sugar_per_100g",
+    "sugar": "sugar_per_100g", "dont sucres": "sugar_per_100g",
+    "of which sugars": "sugar_per_100g",
+    "matières grasses": "fat_per_100g", "matieres grasses": "fat_per_100g",
+    "lipides": "fat_per_100g", "fat": "fat_per_100g", "fats": "fat_per_100g",
+    "total fat": "fat_per_100g", "graisses": "fat_per_100g",
+    "acides gras saturés": "sat_fat_per_100g", "saturated fat": "sat_fat_per_100g",
+    "dont acides gras saturés": "sat_fat_per_100g",
+    "dont acides gras satures": "sat_fat_per_100g",
+    "saturated": "sat_fat_per_100g", "ag saturés": "sat_fat_per_100g",
+    "énergie": "kcal_per_100g", "energie": "kcal_per_100g",
+    "energy": "kcal_per_100g", "calories": "kcal_per_100g",
+    "valeur énergétique": "kcal_per_100g", "valeur energetique": "kcal_per_100g",
+    "kcal": "kcal_per_100g",
+    "sel": "salt_per_100g", "salt": "salt_per_100g", "sodium": "salt_per_100g",
+    "fibres": "fiber_per_100g", "fiber": "fiber_per_100g",
+    "fibre alimentaire": "fiber_per_100g", "dietary fiber": "fiber_per_100g",
+}
+
+AMINO_ALIASES = {
+    "leucine": "leucine", "l-leucine": "leucine",
+    "isoleucine": "isoleucine", "l-isoleucine": "isoleucine",
+    "valine": "valine", "l-valine": "valine",
+    "glutamine": "glutamine", "l-glutamine": "glutamine",
+    "acide glutamique": "glutamine", "glutamic acid": "glutamine",
+    "arginine": "arginine", "l-arginine": "arginine",
+    "lysine": "lysine", "l-lysine": "lysine",
+    "méthionine": "methionine", "methionine": "methionine", "l-methionine": "methionine",
+    "phénylalanine": "phenylalanine", "phenylalanine": "phenylalanine",
+    "l-phenylalanine": "phenylalanine",
+    "thréonine": "threonine", "threonine": "threonine", "l-threonine": "threonine",
+    "tryptophane": "tryptophan", "tryptophan": "tryptophan", "l-tryptophan": "tryptophan",
+    "histidine": "histidine", "l-histidine": "histidine",
+    "alanine": "alanine", "l-alanine": "alanine",
+    "glycine": "glycine",
+    "proline": "proline", "l-proline": "proline",
+    "sérine": "serine", "serine": "serine", "l-serine": "serine",
+    "tyrosine": "tyrosine", "l-tyrosine": "tyrosine",
+    "acide aspartique": "aspartic_acid", "aspartic acid": "aspartic_acid",
+    "cystéine": "cysteine", "cysteine": "cysteine", "l-cysteine": "cysteine",
+    "cystine": "cysteine",
+}
+
+
+class NutritionEvidence:
+    """A single extracted value with provenance."""
+    def __init__(self, field: str, value: float, unit: str, source: str,
+                 confidence: float, raw_snippet: str = "", amino_base: str = ""):
+        self.field = field
+        self.value = value
+        self.unit = unit
+        self.source = source
+        self.confidence = confidence
+        self.raw_snippet = raw_snippet[:200] if raw_snippet else ""
+        self.amino_base = amino_base
+
+    def to_dict(self):
+        return {
+            "field": self.field,
+            "value": self.value,
+            "unit": self.unit,
+            "source": self.source,
+            "confidence": self.confidence,
+            "raw_snippet": self.raw_snippet,
+            "amino_base": self.amino_base,
+        }
+
+    def __repr__(self):
+        return f"Evidence({self.field}={self.value}{self.unit} src={self.source} conf={self.confidence})"
+
+
+def _parse_num(text: str) -> float | None:
+    if not text:
+        return None
+    text = text.strip().replace(",", ".").replace(" ", "")
+    m = re.search(r"(\d+\.?\d*)", text)
+    if m:
+        return float(m.group(1))
+    return None
+
+
+def _detect_unit(text: str) -> str:
+    text = text.lower().strip()
+    if "kcal" in text:
+        return "kcal"
+    if "kj" in text:
+        return "kj"
+    if "mg" in text:
+        return "mg"
+    if "µg" in text or "mcg" in text:
+        return "µg"
+    return "g"
+
+
+def _normalize_value(value: float, unit: str) -> float:
+    if unit == "mg":
+        return value / 1000.0
+    if unit == "kj":
+        return round(value / 4.184, 1)
+    if unit == "µg":
+        return value / 1_000_000.0
+    return value
+
+
+def _match_field(label: str) -> tuple[str | None, str]:
+    label_clean = re.sub(r'[^a-zàâäéèêëïîôùûüç0-9\s\-/]', '', label.lower().strip())
+    label_clean = re.sub(r'\s+', ' ', label_clean).strip()
+
+    for alias, field in FIELD_ALIASES.items():
+        if alias in label_clean:
+            return field, "nutrition"
+    for alias, field in AMINO_ALIASES.items():
+        if alias in label_clean:
+            return field, "amino"
+    return None, ""
+
+
+def _detect_amino_base(header_text: str) -> str:
+    t = header_text.lower()
+    if re.search(r"(pour|per|par)\s+100\s*g\s+de\s+prot[eé]ine", t):
+        return "per_100g_protein"
+    if re.search(r"(pour|per|par)\s+100\s*g", t):
+        return "per_100g"
+    if re.search(r"(pour|per|par)\s+(dose|portion|serving|scoop)", t):
+        return "per_serving"
+    return "unknown"
+
+
+# ──────────────────────────────────────────────
+# SOURCE A: Structured data (JSON-LD, OG, microdata)
+# ──────────────────────────────────────────────
+
+def extract_source_a(jsonld: dict | None, og: dict, soup: BeautifulSoup) -> list[NutritionEvidence]:
+    evidences = []
+
+    if jsonld:
+        nutrition = jsonld.get("nutrition", {})
+        if isinstance(nutrition, dict):
+            mapping = {
+                "proteinContent": "protein_per_100g",
+                "carbohydrateContent": "carbs_per_100g",
+                "sugarContent": "sugar_per_100g",
+                "fatContent": "fat_per_100g",
+                "saturatedFatContent": "sat_fat_per_100g",
+                "calories": "kcal_per_100g",
+                "sodiumContent": "salt_per_100g",
+                "fiberContent": "fiber_per_100g",
+            }
+            for jld_key, field in mapping.items():
+                raw = nutrition.get(jld_key, "")
+                if raw:
+                    val = _parse_num(str(raw))
+                    unit = _detect_unit(str(raw))
+                    if val is not None:
+                        evidences.append(NutritionEvidence(
+                            field=field, value=_normalize_value(val, unit),
+                            unit="g" if field != "kcal_per_100g" else "kcal",
+                            source="jsonld_nutrition",
+                            confidence=0.9,
+                            raw_snippet=f"{jld_key}: {raw}",
+                        ))
+
+        addl_props = jsonld.get("additionalProperty", [])
+        if isinstance(addl_props, list):
+            for prop in addl_props:
+                if not isinstance(prop, dict):
+                    continue
+                name = prop.get("name", "")
+                value_raw = prop.get("value", "")
+                field, ftype = _match_field(name)
+                if field and value_raw:
+                    val = _parse_num(str(value_raw))
+                    unit = _detect_unit(str(value_raw))
+                    if val is not None:
+                        evidences.append(NutritionEvidence(
+                            field=field, value=_normalize_value(val, unit),
+                            unit="g" if ftype == "nutrition" else unit,
+                            source="jsonld_additionalProperty",
+                            confidence=0.85,
+                            raw_snippet=f"{name}: {value_raw}",
+                        ))
+
+    return evidences
+
+
+# ──────────────────────────────────────────────
+# SOURCE B: HTML tables and sections
+# ──────────────────────────────────────────────
+
+def _extract_from_table(table, soup_url: str = "") -> list[NutritionEvidence]:
+    evidences = []
+    rows = table.find_all("tr")
+    if not rows:
+        return evidences
+
+    header_cells = rows[0].find_all(["td", "th"])
+    header_text = " ".join(c.get_text(strip=True) for c in header_cells).lower()
+
+    per100g_col = None
+    serving_col = None
+    for i, cell in enumerate(header_cells):
+        ct = cell.get_text(strip=True).lower()
+        if re.search(r"(pour|per|par)\s+100\s*g", ct) or ct == "100 g" or ct == "100g":
+            per100g_col = i
+        elif re.search(r"(dose|portion|serving|scoop)", ct):
+            serving_col = i
+
+    amino_base = _detect_amino_base(header_text)
+    is_amino_table = any(kw in header_text for kw in ["amino", "acide", "bcaa", "aminogramme"])
+
+    for row in rows[1:]:
+        cells = row.find_all(["td", "th"])
+        if len(cells) < 2:
+            continue
+
+        label = cells[0].get_text(strip=True)
+        field, ftype = _match_field(label)
+        if not field:
+            continue
+
+        value_col = per100g_col if per100g_col is not None else 1
+        if value_col >= len(cells):
+            value_col = len(cells) - 1
+
+        cell_text = cells[value_col].get_text(strip=True)
+        val = _parse_num(cell_text)
+        unit = _detect_unit(cell_text)
+
+        if val is None:
+            continue
+
+        conf = 0.9 if per100g_col is not None else 0.7
+        if ftype == "amino":
+            conf = 0.85 if per100g_col is not None or is_amino_table else 0.6
+
+        evidences.append(NutritionEvidence(
+            field=field, value=_normalize_value(val, unit),
+            unit="g" if unit in ("g", "mg", "µg") else unit,
+            source="html_table",
+            confidence=conf,
+            raw_snippet=f"{label}: {cell_text}",
+            amino_base=amino_base if ftype == "amino" else "",
+        ))
+
+    return evidences
+
+
+def _extract_from_div_sections(soup: BeautifulSoup) -> list[NutritionEvidence]:
+    evidences = []
+    sections = soup.find_all(["div", "section", "dl"],
+                              class_=re.compile(r"nutri|valeur|composition|amino|ingredi|nutrition", re.I))
+
+    for section in sections:
+        section_text = section.get_text(" ", strip=True).lower()
+        amino_base = _detect_amino_base(section_text)
+
+        items = section.find_all(["div", "dt", "dd", "li", "span", "p"])
+        for i, el in enumerate(items):
+            el_text = el.get_text(strip=True)
+            field, ftype = _match_field(el_text)
+            if not field:
+                continue
+
+            for j in range(i + 1, min(i + 4, len(items))):
+                next_text = items[j].get_text(strip=True)
+                val = _parse_num(next_text)
+                if val is not None:
+                    unit = _detect_unit(next_text)
+                    evidences.append(NutritionEvidence(
+                        field=field, value=_normalize_value(val, unit),
+                        unit="g" if unit in ("g", "mg", "µg") else unit,
+                        source="html_section",
+                        confidence=0.7,
+                        raw_snippet=f"{el_text}: {next_text}",
+                        amino_base=amino_base if ftype == "amino" else "",
+                    ))
+                    break
+
+    return evidences
+
+
+def extract_source_b(soup: BeautifulSoup) -> list[NutritionEvidence]:
+    evidences = []
+
+    for table in soup.find_all("table"):
+        table_text = table.get_text(" ", strip=True).lower()
+        keywords = ["prot", "nutri", "valeur", "amino", "bcaa", "leucine",
+                     "carb", "fat", "lipid", "glucid", "calori", "énergie"]
+        if not any(kw in table_text for kw in keywords):
+            continue
+        evidences.extend(_extract_from_table(table))
+
+    evidences.extend(_extract_from_div_sections(soup))
+
+    return evidences
+
+
+# ──────────────────────────────────────────────
+# SOURCE C: OCR / Vision on product images
+# ──────────────────────────────────────────────
+
+def find_nutrition_images(soup: BeautifulSoup, page_url: str) -> list[str]:
+    candidates = []
+    for img in soup.find_all("img"):
+        src = img.get("src", "") or img.get("data-src", "") or img.get("data-lazy-src", "")
+        if not src:
+            continue
+
+        alt = (img.get("alt", "") or "").lower()
+        title = (img.get("title", "") or "").lower()
+        cls = " ".join(img.get("class", [])).lower()
+        parent_text = (img.parent.get_text(strip=True) if img.parent else "").lower()[:100]
+
+        score = 0
+        nutrition_kw = ["nutri", "valeur", "composition", "amino", "etiquette",
+                        "label", "ingrédient", "ingredient", "tableau"]
+        for kw in nutrition_kw:
+            if kw in alt or kw in title or kw in cls or kw in parent_text:
+                score += 2
+
+        width = img.get("width", "")
+        height = img.get("height", "")
+        w = _parse_num(str(width)) or 0
+        h = _parse_num(str(height)) or 0
+        if w >= 400 or h >= 400:
+            score += 1
+
+        if score > 0:
+            full_url = urljoin(page_url, src)
+            if full_url.startswith("http"):
+                candidates.append((score, full_url))
+
+    candidates.sort(key=lambda x: -x[0])
+    return [url for _, url in candidates[:3]]
+
+
+def _pick_highest_res(image_url: str) -> str:
+    for size in ["1200", "1000", "800"]:
+        for param in [f"?width={size}", f"?w={size}", f"&width={size}"]:
+            if "?" not in image_url:
+                return image_url + param
+    return image_url
+
+
+def ocr_nutrition_image(image_url: str) -> list[NutritionEvidence]:
+    evidences = []
+
+    base_url = os.environ.get("AI_INTEGRATIONS_OPENAI_BASE_URL")
+    api_key = os.environ.get("AI_INTEGRATIONS_OPENAI_API_KEY")
+
+    if not base_url or not api_key:
+        logger.warning("[OCR] OpenAI integration not configured, skipping OCR")
+        return evidences
+
+    try:
+        from openai import OpenAI
+        client = OpenAI(base_url=base_url, api_key=api_key)
+
+        hd_url = _pick_highest_res(image_url)
+
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Tu es un expert en extraction de données nutritionnelles depuis des images d'étiquettes de produits protéinés (whey). "
+                        "Extrais TOUTES les valeurs nutritionnelles et l'aminogramme visibles dans l'image. "
+                        "Réponds UNIQUEMENT en JSON valide, sans markdown, sans commentaire.\n\n"
+                        "Format attendu:\n"
+                        '{"nutrition": {"protein_per_100g": 80.0, "carbs_per_100g": 5.2, "sugar_per_100g": 3.1, '
+                        '"fat_per_100g": 2.0, "sat_fat_per_100g": 1.2, "kcal_per_100g": 370, "salt_per_100g": 0.5, '
+                        '"fiber_per_100g": null}, '
+                        '"amino_profile": {"leucine": 10.5, "isoleucine": 5.2, "valine": 5.0, "glutamine": 15.0, '
+                        '"arginine": 2.5, "lysine": 8.5}, '
+                        '"amino_base": "per_100g_protein", '
+                        '"serving_size_g": 30, '
+                        '"ingredients_text": "Isolat de protéine de lactosérum, arôme, ...", '
+                        '"confidence_notes": "Image claire, tableau lisible"}\n\n'
+                        "Règles:\n"
+                        "- amino_base: 'per_100g_protein', 'per_100g', ou 'per_serving'\n"
+                        "- Valeurs en grammes (convertir mg → g en divisant par 1000)\n"
+                        "- Ne pas inventer de valeurs. Mettre null si non visible.\n"
+                        "- Si l'image ne contient pas d'information nutritionnelle, retourner {}"
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Extrais toutes les données nutritionnelles et l'aminogramme de cette étiquette produit."
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": hd_url, "detail": "high"},
+                        },
+                    ],
+                },
+            ],
+            max_tokens=1500,
+            temperature=0.1,
+        )
+
+        raw = response.choices[0].message.content.strip()
+        raw = re.sub(r'^```(?:json)?\s*', '', raw)
+        raw = re.sub(r'\s*```$', '', raw)
+
+        import json
+        data = json.loads(raw)
+
+        if not data:
+            logger.info("[OCR] No nutrition data found in image")
+            return evidences
+
+        nutrition = data.get("nutrition", {})
+        for field in NUTRITION_FIELDS:
+            val = nutrition.get(field)
+            if val is not None and isinstance(val, (int, float)):
+                evidences.append(NutritionEvidence(
+                    field=field, value=float(val),
+                    unit="kcal" if field == "kcal_per_100g" else "g",
+                    source="ocr_vision",
+                    confidence=0.65,
+                    raw_snippet=f"OCR: {field}={val}",
+                ))
+
+        amino = data.get("amino_profile", {})
+        amino_base = data.get("amino_base", "unknown")
+        for amino_name, val in amino.items():
+            if val is not None and isinstance(val, (int, float)):
+                canonical = AMINO_ALIASES.get(amino_name.lower(), amino_name.lower())
+                if canonical in AMINO_FIELDS:
+                    evidences.append(NutritionEvidence(
+                        field=canonical, value=float(val),
+                        unit="g", source="ocr_vision",
+                        confidence=0.6,
+                        raw_snippet=f"OCR: {amino_name}={val}",
+                        amino_base=amino_base,
+                    ))
+
+        ingredients = data.get("ingredients_text")
+        if ingredients and isinstance(ingredients, str) and len(ingredients) > 10:
+            evidences.append(NutritionEvidence(
+                field="ingredients_text", value=0,
+                unit="text", source="ocr_vision",
+                confidence=0.55,
+                raw_snippet=ingredients[:200],
+            ))
+
+        logger.info(f"[OCR] Extracted {len(evidences)} values from image")
+
+    except Exception as e:
+        logger.warning(f"[OCR] Error processing image {image_url}: {e}")
+
+    return evidences
+
+
+# ──────────────────────────────────────────────
+# FUSION ENGINE
+# ──────────────────────────────────────────────
+
+def should_trigger_ocr(evidences: list[NutritionEvidence]) -> bool:
+    fields_found = {e.field for e in evidences if e.confidence >= 0.5}
+
+    has_protein = "protein_per_100g" in fields_found
+    has_kcal = "kcal_per_100g" in fields_found
+    has_any_amino = bool(fields_found & set(AMINO_FIELDS))
+
+    if not has_protein:
+        return True
+    if not has_kcal:
+        return True
+    if not has_any_amino:
+        return True
+
+    protein_vals = [e.value for e in evidences if e.field == "protein_per_100g" and e.confidence >= 0.5]
+    if protein_vals and (max(protein_vals) >= 96 or min(protein_vals) < 40):
+        return True
+
+    return False
+
+
+def fuse_evidences(all_evidences: list[NutritionEvidence]) -> dict:
+    best = {}
+    all_raw = {}
+
+    for ev in all_evidences:
+        if ev.field == "ingredients_text":
+            if ev.field not in best or ev.confidence > best[ev.field].confidence:
+                best[ev.field] = ev
+            continue
+
+        if ev.field not in best or ev.confidence > best[ev.field].confidence:
+            best[ev.field] = ev
+
+        if ev.field not in all_raw:
+            all_raw[ev.field] = []
+        all_raw[ev.field].append(ev)
+
+    result = {
+        "nutrition": {},
+        "amino_profile": {},
+        "amino_base": "unknown",
+        "ingredients_text": None,
+        "raw_evidence": [],
+        "sources_used": set(),
+        "field_count": 0,
+        "amino_count": 0,
+    }
+
+    for field, ev in best.items():
+        result["sources_used"].add(ev.source)
+        result["raw_evidence"].append(ev.to_dict())
+
+        if field == "ingredients_text":
+            result["ingredients_text"] = ev.raw_snippet
+        elif field in NUTRITION_FIELDS:
+            result["nutrition"][field] = ev.value
+            result["field_count"] += 1
+        elif field in AMINO_FIELDS:
+            result["amino_profile"][field] = ev.value
+            result["amino_count"] += 1
+            if ev.amino_base and ev.amino_base != "unknown":
+                result["amino_base"] = ev.amino_base
+
+    cross_check = _cross_check_macros(result["nutrition"])
+    result["macro_coherent"] = cross_check["coherent"]
+    result["coherence_notes"] = cross_check["notes"]
+
+    result["sources_used"] = list(result["sources_used"])
+
+    return result
+
+
+def _cross_check_macros(nutrition: dict) -> dict:
+    notes = []
+    coherent = True
+
+    protein = nutrition.get("protein_per_100g")
+    carbs = nutrition.get("carbs_per_100g")
+    fat = nutrition.get("fat_per_100g")
+    kcal = nutrition.get("kcal_per_100g")
+
+    if protein is not None and carbs is not None and fat is not None and kcal is not None:
+        expected_kcal = protein * 4 + carbs * 4 + fat * 9
+        diff = abs(expected_kcal - kcal)
+        if diff > 50:
+            coherent = False
+            notes.append(f"kcal mismatch: expected ~{expected_kcal:.0f} vs {kcal:.0f} (diff={diff:.0f})")
+        else:
+            notes.append(f"kcal coherent: expected ~{expected_kcal:.0f} vs {kcal:.0f}")
+
+    if protein is not None:
+        if protein >= 96:
+            coherent = False
+            notes.append(f"protein suspect: {protein}g/100g >= 96")
+        elif protein < 40:
+            coherent = False
+            notes.append(f"protein too low for whey: {protein}g/100g < 40")
+
+    sugar = nutrition.get("sugar_per_100g")
+    if sugar is not None and carbs is not None:
+        if sugar > carbs + 0.5:
+            coherent = False
+            notes.append(f"sugar > carbs: {sugar}g vs {carbs}g")
+
+    sat = nutrition.get("sat_fat_per_100g")
+    if sat is not None and fat is not None:
+        if sat > fat + 0.5:
+            coherent = False
+            notes.append(f"sat_fat > fat: {sat}g vs {fat}g")
+
+    return {"coherent": coherent, "notes": notes}
+
+
+# ──────────────────────────────────────────────
+# MAIN PIPELINE
+# ──────────────────────────────────────────────
+
+def extract_all_nutrition(
+    soup: BeautifulSoup,
+    jsonld: dict | None,
+    og: dict,
+    page_url: str,
+    enable_ocr: bool = True,
+    force_ocr: bool = False,
+) -> dict:
+    all_evidences = []
+
+    source_a = extract_source_a(jsonld, og, soup)
+    all_evidences.extend(source_a)
+    logger.info(f"[MULTI] Source A (structured): {len(source_a)} values")
+
+    source_b = extract_source_b(soup)
+    all_evidences.extend(source_b)
+    logger.info(f"[MULTI] Source B (HTML): {len(source_b)} values")
+
+    if enable_ocr and (force_ocr or should_trigger_ocr(all_evidences)):
+        nutrition_images = find_nutrition_images(soup, page_url)
+        if nutrition_images:
+            logger.info(f"[MULTI] Triggering OCR on {len(nutrition_images)} image(s)")
+            for img_url in nutrition_images[:2]:
+                try:
+                    source_c = ocr_nutrition_image(img_url)
+                    all_evidences.extend(source_c)
+                    logger.info(f"[MULTI] Source C (OCR): {len(source_c)} values from {img_url}")
+                except Exception as e:
+                    logger.warning(f"[MULTI] OCR failed for {img_url}: {e}")
+        else:
+            logger.info("[MULTI] No nutrition images found for OCR")
+    else:
+        logger.info("[MULTI] OCR not triggered (data sufficient)")
+
+    result = fuse_evidences(all_evidences)
+
+    result["total_evidences"] = len(all_evidences)
+
+    return result

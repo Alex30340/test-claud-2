@@ -174,6 +174,21 @@ def init_db():
         ("protein_confidence", "FLOAT DEFAULT 0.0"),
         ("protein_suspect", "BOOLEAN DEFAULT FALSE"),
         ("image_url", "TEXT"),
+        ("carbs_per_100g", "FLOAT"),
+        ("sugar_per_100g", "FLOAT"),
+        ("fat_per_100g", "FLOAT"),
+        ("sat_fat_per_100g", "FLOAT"),
+        ("kcal_per_100g", "FLOAT"),
+        ("salt_per_100g", "FLOAT"),
+        ("fiber_per_100g", "FLOAT"),
+        ("amino_profile", "JSONB"),
+        ("amino_base", "VARCHAR(30) DEFAULT 'unknown'"),
+        ("raw_evidence", "JSONB"),
+        ("nutrition_sources", "TEXT"),
+        ("macro_coherent", "BOOLEAN DEFAULT TRUE"),
+        ("glutamine_g", "FLOAT"),
+        ("arginine_g", "FLOAT"),
+        ("lysine_g", "FLOAT"),
     ]
     for col_name, col_type in product_new_columns:
         try:
@@ -408,7 +423,15 @@ def upsert_product(product_data: dict) -> int:
             "profil_suspect", "protein_source", "protein_confidence", "protein_suspect",
             "score_proteique", "score_sante", "score_global",
             "score_final", "needs_review", "image_url",
+            "carbs_per_100g", "sugar_per_100g", "fat_per_100g", "sat_fat_per_100g",
+            "kcal_per_100g", "salt_per_100g", "fiber_per_100g",
+            "amino_profile", "amino_base", "raw_evidence", "nutrition_sources",
+            "macro_coherent", "glutamine_g", "arginine_g", "lysine_g",
         ]
+
+        import json as _json
+        amino_profile = product_data.get("amino_profile")
+        raw_evidence = product_data.get("raw_evidence")
 
         values = {
             "name": name,
@@ -443,6 +466,21 @@ def upsert_product(product_data: dict) -> int:
             "score_final": product_data.get("score_final"),
             "needs_review": product_data.get("needs_review", False),
             "image_url": product_data.get("image_url"),
+            "carbs_per_100g": product_data.get("carbs_per_100g"),
+            "sugar_per_100g": product_data.get("sugar_per_100g"),
+            "fat_per_100g": product_data.get("fat_per_100g"),
+            "sat_fat_per_100g": product_data.get("sat_fat_per_100g"),
+            "kcal_per_100g": product_data.get("kcal_per_100g"),
+            "salt_per_100g": product_data.get("salt_per_100g"),
+            "fiber_per_100g": product_data.get("fiber_per_100g"),
+            "amino_profile": _json.dumps(amino_profile) if amino_profile else None,
+            "amino_base": product_data.get("amino_base", "unknown"),
+            "raw_evidence": _json.dumps(raw_evidence) if raw_evidence else None,
+            "nutrition_sources": product_data.get("nutrition_sources"),
+            "macro_coherent": product_data.get("macro_coherent", True),
+            "glutamine_g": product_data.get("glutamine_g"),
+            "arginine_g": product_data.get("arginine_g"),
+            "lysine_g": product_data.get("lysine_g"),
         }
 
         if existing:

@@ -39,3 +39,6 @@ externalPort = 80
 
 [userenv.shared]
 BRAVE_API_KEY = "BSAtIZRmoUdUOdOSLdIfER4_IpWSEji"
+
+[agent]
+integrations = ["python_openai_ai_integrations:1.0.0"]

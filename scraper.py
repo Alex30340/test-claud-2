@@ -1076,48 +1076,77 @@ def extract_product_data(url: str) -> dict | None:
 
         price_per_kg = validate_price_per_kg(price, weight)
 
-        from nutrition_extractor import extract_protein_per_100g as _extract_protein, extract_protein_from_jsonld
+        from multi_source_extractor import extract_all_nutrition
 
-        protein_per_100g = None
-        protein_source = None
+        og_data = {}
+        for meta in soup.find_all("meta", attrs={"property": True}):
+            og_data[meta.get("property", "")] = meta.get("content", "")
+
+        multi_result = extract_all_nutrition(
+            soup=soup,
+            jsonld=jsonld,
+            og=og_data,
+            page_url=url,
+            enable_ocr=True,
+            force_ocr=False,
+        )
+
+        nutrition = multi_result.get("nutrition", {})
+        amino_profile = multi_result.get("amino_profile", {})
+        amino_base = multi_result.get("amino_base", "unknown")
+        sources_used = multi_result.get("sources_used", [])
+        raw_evidence = multi_result.get("raw_evidence", [])
+        macro_coherent = multi_result.get("macro_coherent", True)
+
+        protein_per_100g = nutrition.get("protein_per_100g")
+        protein_source = ",".join(sources_used) if sources_used else None
         protein_confidence = 0.0
         protein_suspect = False
 
-        jsonld_protein = extract_protein_from_jsonld(jsonld)
-        if jsonld_protein["protein_per_100g"]:
-            protein_per_100g = jsonld_protein["protein_per_100g"]
-            protein_source = jsonld_protein["protein_source"]
-            protein_confidence = jsonld_protein["protein_confidence"]
-            protein_suspect = jsonld_protein["protein_suspect"]
-        elif jsonld_protein["protein_suspect"]:
-            protein_suspect = True
-
-        if not protein_per_100g:
-            html_protein = _extract_protein(soup)
-            if html_protein["protein_per_100g"]:
-                protein_per_100g = html_protein["protein_per_100g"]
-                protein_source = html_protein["protein_source"]
-                protein_confidence = html_protein["protein_confidence"]
-                protein_suspect = False
-            elif html_protein["protein_suspect"]:
+        if protein_per_100g is not None:
+            protein_ev = [e for e in raw_evidence if e.get("field") == "protein_per_100g"]
+            if protein_ev:
+                protein_confidence = max(e.get("confidence", 0) for e in protein_ev)
+            if protein_per_100g >= 96 or protein_per_100g < 40:
                 protein_suspect = True
+        else:
+            from nutrition_extractor import extract_protein_per_100g as _extract_protein, extract_protein_from_jsonld
 
-        if not protein_per_100g:
-            nutrition_data = extract_nutrition_from_table(soup)
-            fallback = nutrition_data.get("protein")
-            if fallback:
-                from nutrition_extractor import validate_protein_value
-                validated, suspect = validate_protein_value(fallback)
-                if validated:
-                    protein_per_100g = validated
-                    protein_source = "legacy_table"
-                    protein_confidence = 0.5
-                    protein_suspect = False
-                elif suspect:
-                    protein_suspect = True
+            jsonld_protein = extract_protein_from_jsonld(jsonld)
+            if jsonld_protein["protein_per_100g"]:
+                protein_per_100g = jsonld_protein["protein_per_100g"]
+                protein_source = jsonld_protein["protein_source"]
+                protein_confidence = jsonld_protein["protein_confidence"]
+                protein_suspect = jsonld_protein["protein_suspect"]
+            else:
+                html_protein = _extract_protein(soup)
+                if html_protein["protein_per_100g"]:
+                    protein_per_100g = html_protein["protein_per_100g"]
+                    protein_source = html_protein["protein_source"]
+                    protein_confidence = html_protein["protein_confidence"]
+
+        carbs_per_100g = nutrition.get("carbs_per_100g")
+        sugar_per_100g = nutrition.get("sugar_per_100g")
+        fat_per_100g = nutrition.get("fat_per_100g")
+        sat_fat_per_100g = nutrition.get("sat_fat_per_100g")
+        kcal_per_100g = nutrition.get("kcal_per_100g")
+        salt_per_100g = nutrition.get("salt_per_100g")
+        fiber_per_100g = nutrition.get("fiber_per_100g")
+
+        leucine_g = amino_profile.get("leucine")
+        isoleucine_g = amino_profile.get("isoleucine")
+        valine_g = amino_profile.get("valine")
+        glutamine_g = amino_profile.get("glutamine")
+        arginine_g = amino_profile.get("arginine")
+        lysine_g = amino_profile.get("lysine")
 
         page_full_text = soup.get_text(" ", strip=True)
         ingredients_text = find_ingredients_block(page_full_text, soup=soup)
+
+        multi_ingredients = multi_result.get("ingredients_text")
+        if multi_ingredients and (not ingredients_text or len(multi_ingredients) > len(ingredients_text)):
+            ingredients_text = multi_ingredients
+
         analysis_text = ingredients_text or page_full_text
 
         all_text = (name + " " + (jsonld.get("description", "") if jsonld else "") + " " + page_full_text[:3000]).lower()
@@ -1126,15 +1155,31 @@ def extract_product_data(url: str) -> dict | None:
         whey_type = detect_whey_type(name + " " + all_text[:2000])
         made_in_france = detect_made_in_france(page_full_text)
         origin = extract_origin_label(page_full_text, made_in_france)
-        has_aminogram = detect_aminogram(page_full_text)
-        mentions_bcaa = detect_bcaa(page_full_text)
+        has_aminogram = detect_aminogram(page_full_text) or len(amino_profile) >= 6
+        mentions_bcaa = detect_bcaa(page_full_text) or bool(leucine_g and isoleucine_g and valine_g)
 
         has_artificial_flavors = detect_artificial_flavors(analysis_text)
         has_thickeners = detect_thickeners(analysis_text)
         has_colorants = detect_colorants(analysis_text)
         ingredient_count = count_ingredients(ingredients_text)
 
-        amino_values = extract_amino_values(page_full_text, protein_per_100g)
+        if not leucine_g or not isoleucine_g or not valine_g:
+            legacy_amino = extract_amino_values(page_full_text, protein_per_100g)
+            leucine_g = leucine_g or legacy_amino.get("leucine_g")
+            isoleucine_g = isoleucine_g or legacy_amino.get("isoleucine_g")
+            valine_g = valine_g or legacy_amino.get("valine_g")
+            bcaa_per_100g_prot = legacy_amino.get("bcaa_per_100g_prot")
+        else:
+            if protein_per_100g and protein_per_100g > 0:
+                total_bcaa = (leucine_g or 0) + (isoleucine_g or 0) + (valine_g or 0)
+                if amino_base == "per_100g_protein":
+                    bcaa_per_100g_prot = total_bcaa
+                elif amino_base == "per_100g":
+                    bcaa_per_100g_prot = round(total_bcaa * 100 / protein_per_100g, 1) if protein_per_100g > 0 else None
+                else:
+                    bcaa_per_100g_prot = total_bcaa
+            else:
+                bcaa_per_100g_prot = None
 
         price_score = calculate_price_score(price_per_kg)
 
@@ -1142,10 +1187,10 @@ def extract_product_data(url: str) -> dict | None:
 
         protein_score_result = calculate_protein_score(
             protein_per_100g=effective_protein,
-            bcaa_per_100g_prot=amino_values["bcaa_per_100g_prot"],
-            leucine_g=amino_values["leucine_g"],
-            isoleucine_g=amino_values["isoleucine_g"],
-            valine_g=amino_values["valine_g"],
+            bcaa_per_100g_prot=bcaa_per_100g_prot,
+            leucine_g=leucine_g,
+            isoleucine_g=isoleucine_g,
+            valine_g=valine_g,
         )
 
         health_result = calculate_health_score(
@@ -1168,7 +1213,7 @@ def extract_product_data(url: str) -> dict | None:
             score_sante=health_result["score_sante"],
             price_per_kg=price_per_kg,
             protein_per_100g=effective_protein,
-            leucine_g=amino_values["leucine_g"],
+            leucine_g=leucine_g,
             has_aminogram=has_aminogram,
             origin_label=origin["origin_label"],
             bcaa_missing=protein_score_result.get("bcaa_missing", False),
@@ -1202,10 +1247,13 @@ def extract_product_data(url: str) -> dict | None:
             "has_thickeners": has_thickeners,
             "has_colorants": has_colorants,
             "ingredient_count": ingredient_count,
-            "bcaa_per_100g_prot": amino_values["bcaa_per_100g_prot"],
-            "leucine_g": amino_values["leucine_g"],
-            "isoleucine_g": amino_values["isoleucine_g"],
-            "valine_g": amino_values["valine_g"],
+            "bcaa_per_100g_prot": bcaa_per_100g_prot,
+            "leucine_g": leucine_g,
+            "isoleucine_g": isoleucine_g,
+            "valine_g": valine_g,
+            "glutamine_g": glutamine_g,
+            "arginine_g": arginine_g,
+            "lysine_g": lysine_g,
             "profil_suspect": protein_score_result["profil_suspect"],
             "ingredients": ingredients_text,
             "score_proteique": protein_score_result["score_proteique"],
@@ -1217,6 +1265,18 @@ def extract_product_data(url: str) -> dict | None:
             "is_top_qualite": final_result["is_top_qualite"],
             "is_low_transparency": final_result["is_low_transparency"],
             "image_url": image_url if image_url else None,
+            "carbs_per_100g": carbs_per_100g,
+            "sugar_per_100g": sugar_per_100g,
+            "fat_per_100g": fat_per_100g,
+            "sat_fat_per_100g": sat_fat_per_100g,
+            "kcal_per_100g": kcal_per_100g,
+            "salt_per_100g": salt_per_100g,
+            "fiber_per_100g": fiber_per_100g,
+            "amino_profile": amino_profile if amino_profile else None,
+            "amino_base": amino_base,
+            "raw_evidence": raw_evidence if raw_evidence else None,
+            "nutrition_sources": ",".join(sources_used) if sources_used else None,
+            "macro_coherent": macro_coherent,
             "date_recuperation": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "_has_jsonld": jsonld is not None,
             "_price_source": price_source,
@@ -1309,6 +1369,21 @@ def split_product_offer(raw: dict) -> tuple[dict, dict]:
         "score_global": raw.get("score_global"),
         "score_final": raw.get("score_final"),
         "image_url": raw.get("image_url"),
+        "carbs_per_100g": raw.get("carbs_per_100g"),
+        "sugar_per_100g": raw.get("sugar_per_100g"),
+        "fat_per_100g": raw.get("fat_per_100g"),
+        "sat_fat_per_100g": raw.get("sat_fat_per_100g"),
+        "kcal_per_100g": raw.get("kcal_per_100g"),
+        "salt_per_100g": raw.get("salt_per_100g"),
+        "fiber_per_100g": raw.get("fiber_per_100g"),
+        "amino_profile": raw.get("amino_profile"),
+        "amino_base": raw.get("amino_base", "unknown"),
+        "raw_evidence": raw.get("raw_evidence"),
+        "nutrition_sources": raw.get("nutrition_sources"),
+        "macro_coherent": raw.get("macro_coherent", True),
+        "glutamine_g": raw.get("glutamine_g"),
+        "arginine_g": raw.get("arginine_g"),
+        "lysine_g": raw.get("lysine_g"),
     }
 
     merchant = urlparse(raw.get("url", "")).netloc.replace("www.", "")
