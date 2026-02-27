@@ -121,6 +121,19 @@ def init_db():
             errors INTEGER DEFAULT 0,
             details TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS reviews (
+            id SERIAL PRIMARY KEY,
+            product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+            title VARCHAR(255),
+            comment TEXT,
+            purchased_from VARCHAR(255),
+            is_flagged BOOLEAN DEFAULT FALSE,
+            is_hidden BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        );
     """)
     conn.commit()
 
@@ -696,6 +709,179 @@ def get_catalog_stats() -> dict:
             "last_refresh": last_refresh,
             "products_needing_review": products_needing_review,
         }
+    finally:
+        cur.close()
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Review functions
+# ---------------------------------------------------------------------------
+
+def get_product_by_id(product_id: int) -> dict | None:
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("SELECT * FROM products WHERE id = %s", (product_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        cur.close()
+        conn.close()
+
+
+def create_review(product_id: int, user_id: int, rating: int, title: str = "",
+                  comment: str = "", purchased_from: str = "") -> dict | None:
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute(
+            """INSERT INTO reviews (product_id, user_id, rating, title, comment, purchased_from)
+               VALUES (%s, %s, %s, %s, %s, %s)
+               RETURNING *""",
+            (product_id, user_id, rating, title, comment, purchased_from),
+        )
+        review = dict(cur.fetchone())
+        conn.commit()
+        return review
+    except Exception:
+        conn.rollback()
+        return None
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_reviews_for_product(product_id: int, include_hidden: bool = False) -> list[dict]:
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        if include_hidden:
+            cur.execute(
+                """SELECT r.*, u.display_name
+                   FROM reviews r
+                   JOIN users u ON r.user_id = u.id
+                   WHERE r.product_id = %s
+                   ORDER BY r.created_at DESC""",
+                (product_id,),
+            )
+        else:
+            cur.execute(
+                """SELECT r.*, u.display_name
+                   FROM reviews r
+                   JOIN users u ON r.user_id = u.id
+                   WHERE r.product_id = %s AND r.is_hidden = FALSE
+                   ORDER BY r.created_at DESC""",
+                (product_id,),
+            )
+        rows = [dict(r) for r in cur.fetchall()]
+        return rows
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_average_rating(product_id: int) -> dict:
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute(
+            """SELECT COALESCE(AVG(rating), 0) AS average, COUNT(*) AS count
+               FROM reviews
+               WHERE product_id = %s AND is_hidden = FALSE""",
+            (product_id,),
+        )
+        row = cur.fetchone()
+        return {
+            "average": round(float(row["average"]), 1),
+            "count": row["count"],
+        }
+    finally:
+        cur.close()
+        conn.close()
+
+
+def flag_review(review_id: int) -> bool:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "UPDATE reviews SET is_flagged = TRUE WHERE id = %s",
+            (review_id,),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_flagged_reviews(limit: int = 50) -> list[dict]:
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute(
+            """SELECT r.*, u.display_name, p.name AS product_name
+               FROM reviews r
+               JOIN users u ON r.user_id = u.id
+               JOIN products p ON r.product_id = p.id
+               WHERE r.is_flagged = TRUE AND r.is_hidden = FALSE
+               ORDER BY r.created_at DESC
+               LIMIT %s""",
+            (limit,),
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+        return rows
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_products_by_ids(product_ids: list[int]) -> list[dict]:
+    if not product_ids:
+        return []
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        placeholders = ",".join(["%s"] * len(product_ids))
+        cur.execute(
+            f"""WITH best_offers AS (
+                SELECT DISTINCT ON (product_id)
+                    product_id,
+                    prix AS offer_prix,
+                    prix_par_kg AS offer_prix_par_kg,
+                    url AS offer_url,
+                    merchant AS offer_merchant,
+                    confidence AS offer_confidence,
+                    poids_kg AS offer_poids_kg
+                FROM offers
+                WHERE is_active = TRUE
+                ORDER BY product_id, confidence DESC, updated_at DESC
+            )
+            SELECT p.*, bo.offer_prix, bo.offer_prix_par_kg, bo.offer_url,
+                   bo.offer_merchant, bo.offer_confidence, bo.offer_poids_kg
+            FROM products p
+            LEFT JOIN best_offers bo ON p.id = bo.product_id
+            WHERE p.id IN ({placeholders})""",
+            product_ids,
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+        return rows
+    finally:
+        cur.close()
+        conn.close()
+
+
+def hide_review(review_id: int) -> bool:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "UPDATE reviews SET is_hidden = TRUE WHERE id = %s",
+            (review_id,),
+        )
+        conn.commit()
+        return cur.rowcount > 0
     finally:
         cur.close()
         conn.close()

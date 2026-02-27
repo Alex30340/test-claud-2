@@ -15,6 +15,9 @@ from db import (
     init_db, create_user, get_user_by_email,
     save_scan, get_user_scans, get_scan_items,
     get_all_products, get_catalog_stats, get_pipeline_runs,
+    get_product_by_id, get_product_offers, get_products_by_ids,
+    create_review, get_reviews_for_product, get_average_rating,
+    flag_review, hide_review, get_flagged_reviews,
 )
 from auth import hash_password, verify_password
 from page_validator import validate_url_debug, is_whey_product_page
@@ -583,6 +586,292 @@ div.stAlert {
     align-items: center;
     gap: 8px;
 }
+
+.landing-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 40px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(10, 14, 26, 0.85);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(74, 158, 237, 0.1);
+}
+.landing-header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.landing-header-logo-text {
+    font-size: 1.4em;
+    font-weight: 800;
+    color: #e2e8f0;
+    letter-spacing: -0.5px;
+}
+.landing-header-nav {
+    display: flex;
+    align-items: center;
+    gap: 28px;
+}
+.landing-header-nav a {
+    color: #8b9dc3;
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 0.92em;
+    transition: color 0.2s;
+}
+.landing-header-nav a:hover {
+    color: #4a9eed;
+}
+.landing-btn {
+    display: inline-block;
+    padding: 10px 24px;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 0.9em;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: none;
+}
+.landing-btn-primary {
+    background: linear-gradient(135deg, #2563eb, #3b82f6);
+    color: white;
+    box-shadow: 0 2px 12px rgba(37, 99, 235, 0.3);
+}
+.landing-btn-primary:hover {
+    background: linear-gradient(135deg, #1d4ed8, #2563eb);
+    box-shadow: 0 4px 20px rgba(37, 99, 235, 0.4);
+    transform: translateY(-1px);
+}
+.landing-btn-secondary {
+    background: rgba(74, 158, 237, 0.1);
+    color: #4a9eed;
+    border: 1px solid rgba(74, 158, 237, 0.3);
+}
+.landing-btn-secondary:hover {
+    background: rgba(74, 158, 237, 0.2);
+    border-color: rgba(74, 158, 237, 0.5);
+}
+.landing-hero {
+    text-align: center;
+    padding: 80px 40px 60px 40px;
+    max-width: 800px;
+    margin: 0 auto;
+}
+.landing-hero h1 {
+    font-size: 2.8em;
+    font-weight: 800;
+    color: #e2e8f0;
+    letter-spacing: -1px;
+    line-height: 1.2;
+    margin-bottom: 16px;
+}
+.landing-hero h1 span {
+    background: linear-gradient(135deg, #4a9eed, #60a5fa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.landing-hero p {
+    font-size: 1.15em;
+    color: #8b9dc3;
+    line-height: 1.6;
+    margin-bottom: 32px;
+}
+.landing-cards {
+    display: flex;
+    gap: 24px;
+    justify-content: center;
+    flex-wrap: wrap;
+    padding: 0 40px 60px 40px;
+    max-width: 1000px;
+    margin: 0 auto;
+}
+.landing-card {
+    flex: 1;
+    min-width: 260px;
+    max-width: 320px;
+    background: linear-gradient(135deg, rgba(17, 24, 39, 0.7), rgba(15, 20, 35, 0.4));
+    border: 1px solid rgba(74, 158, 237, 0.12);
+    border-radius: 16px;
+    padding: 32px 24px;
+    text-align: center;
+    transition: all 0.3s ease;
+}
+.landing-card:hover {
+    border-color: rgba(74, 158, 237, 0.3);
+    box-shadow: 0 8px 30px rgba(74, 158, 237, 0.1);
+    transform: translateY(-4px);
+}
+.landing-card-icon {
+    font-size: 2.4em;
+    margin-bottom: 16px;
+    background: linear-gradient(135deg, #2563eb, #4a9eed);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.landing-card h3 {
+    font-size: 1.15em;
+    font-weight: 700;
+    color: #e2e8f0;
+    margin-bottom: 8px;
+}
+.landing-card p {
+    font-size: 0.9em;
+    color: #8b9dc3;
+    line-height: 1.5;
+}
+.landing-steps {
+    padding: 60px 40px;
+    max-width: 900px;
+    margin: 0 auto;
+    text-align: center;
+}
+.landing-steps h2 {
+    font-size: 2em;
+    font-weight: 800;
+    color: #e2e8f0;
+    margin-bottom: 40px;
+}
+.landing-steps-grid {
+    display: flex;
+    gap: 40px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+.landing-step {
+    flex: 1;
+    min-width: 200px;
+    max-width: 260px;
+}
+.landing-step-num {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #2563eb, #3b82f6);
+    color: white;
+    font-size: 1.3em;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 16px auto;
+}
+.landing-step h4 {
+    font-size: 1.05em;
+    font-weight: 700;
+    color: #e2e8f0;
+    margin-bottom: 6px;
+}
+.landing-step p {
+    font-size: 0.88em;
+    color: #8b9dc3;
+    line-height: 1.5;
+}
+.landing-footer {
+    text-align: center;
+    padding: 40px;
+    border-top: 1px solid rgba(74, 158, 237, 0.1);
+    margin-top: 60px;
+}
+.landing-footer p {
+    color: #5a6a8a;
+    font-size: 0.85em;
+}
+.landing-footer a {
+    color: #4a9eed;
+    text-decoration: none;
+}
+
+.compare-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(10, 14, 26, 0.95);
+    backdrop-filter: blur(16px);
+    border-top: 1px solid rgba(74, 158, 237, 0.25);
+    padding: 16px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    z-index: 999;
+    box-shadow: 0 -4px 24px rgba(0,0,0,0.4);
+    animation: slideUp 0.3s ease-out;
+}
+@keyframes slideUp {
+    from { transform: translateY(100%); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+.section-alt {
+    background: rgba(17, 24, 39, 0.25);
+    border-radius: 16px;
+    padding: 28px 24px;
+    margin: 16px 0;
+}
+
+.review-card {
+    background: linear-gradient(135deg, rgba(17, 24, 39, 0.6), rgba(15, 20, 35, 0.3));
+    border: 1px solid rgba(74, 158, 237, 0.1);
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin-bottom: 12px;
+}
+.review-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+.review-author {
+    font-weight: 600;
+    color: #e2e8f0;
+    font-size: 0.95em;
+}
+.review-date {
+    color: #5a6a8a;
+    font-size: 0.8em;
+}
+.review-stars {
+    color: #f59e0b;
+    font-size: 1.1em;
+    margin-bottom: 6px;
+}
+.review-title {
+    font-weight: 600;
+    color: #c8d6e5;
+    font-size: 0.95em;
+    margin-bottom: 4px;
+}
+.review-comment {
+    color: #8b9dc3;
+    font-size: 0.9em;
+    line-height: 1.5;
+}
+
+.product-detail-header {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 24px;
+}
+.product-detail-score {
+    text-align: center;
+    min-width: 100px;
+}
+.product-detail-info h1 {
+    font-size: 1.8em;
+    font-weight: 800;
+    color: #e2e8f0;
+    margin-bottom: 4px;
+}
+.product-detail-info .brand {
+    color: #8b9dc3;
+    font-size: 1.05em;
+}
 </style>
 """
 
@@ -592,17 +881,21 @@ st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
 
 api_key = os.environ.get("BRAVE_API_KEY", "") or os.environ.get("BRAVE_SEARCH_API_KEY", "")
 
-for key in ["user", "page", "view_scan_id"]:
+for key in ["user", "page", "view_scan_id", "selected_product_id"]:
     if key not in st.session_state:
         st.session_state[key] = None
+if "compare_list" not in st.session_state:
+    st.session_state.compare_list = []
 if "page" not in st.session_state or st.session_state.page is None:
-    st.session_state.page = "login"
+    st.session_state.page = "landing"
 
 
 def logout():
     st.session_state.user = None
-    st.session_state.page = "login"
+    st.session_state.page = "landing"
     st.session_state.view_scan_id = None
+    st.session_state.selected_product_id = None
+    st.session_state.compare_list = []
 
 
 def is_valid(val):
@@ -1287,6 +1580,7 @@ def render_catalog_results(products):
     mapped_products = []
     for p in products:
         mapped_products.append({
+            "product_id": p.get("id"),
             "nom": p.get("name", "Produit inconnu"),
             "marque": p.get("brand", ""),
             "prix": p.get("offer_prix"),
@@ -1428,11 +1722,44 @@ def render_catalog_results(products):
 
     st.markdown(f"**{len(sorted_df)} produits affiches** sur {len(df)}")
 
-    for rank, (_, row) in enumerate(sorted_df.iterrows(), 1):
+    for rank, (idx, row) in enumerate(sorted_df.iterrows(), 1):
         confidence = row.get("offer_confidence")
         render_product_card_v2(rank, row)
         badge_html = get_confidence_badge(confidence)
-        st.html(CARD_CSS + f"<div style='margin-top:-8px;margin-bottom:12px;padding-left:95px;'>{badge_html}</div>")
+        st.html(CARD_CSS + f"<div style='margin-top:-8px;margin-bottom:4px;padding-left:95px;'>{badge_html}</div>")
+
+        product_id = row.get("product_id") if "product_id" in row.index else None
+        if product_id is None and "id" in row.index:
+            product_id = row.get("id")
+
+        if product_id:
+            btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 4])
+            with btn_col1:
+                if st.button("Voir fiche", key=f"cat_view_{product_id}_{rank}", use_container_width=True):
+                    st.session_state.selected_product_id = int(product_id)
+                    st.session_state.page = "product"
+                    st.rerun()
+            with btn_col2:
+                compare_ids = st.session_state.compare_list
+                if int(product_id) in compare_ids:
+                    if st.button("- Retirer", key=f"cat_rmcmp_{product_id}_{rank}", use_container_width=True):
+                        st.session_state.compare_list = [x for x in compare_ids if x != int(product_id)]
+                        st.rerun()
+                elif len(compare_ids) < 5:
+                    if st.button("+ Comparer", key=f"cat_addcmp_{product_id}_{rank}", use_container_width=True):
+                        st.session_state.compare_list.append(int(product_id))
+                        st.rerun()
+
+    if st.session_state.compare_list:
+        n = len(st.session_state.compare_list)
+        st.markdown(f"""
+        <div class='compare-bar'>
+            <span style='color:#e2e8f0;font-weight:600;font-size:1em;'>Comparateur ({n} produit{'s' if n > 1 else ''})</span>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button(f"Ouvrir le comparateur ({n})", type="primary", key="open_compare_bar"):
+            st.session_state.page = "compare"
+            st.rerun()
 
     st.divider()
     st.subheader("Tableau complet")
@@ -1540,7 +1867,8 @@ def render_sidebar():
 
         nav_pages = [
             ("catalogue", "Catalogue"),
-            ("scan", "Nouveau scan"),
+            ("search", "Recherche"),
+            ("compare", "Comparateur"),
             ("dashboard", "Tableau de bord"),
             ("admin", "Administration"),
         ]
@@ -1558,93 +1886,235 @@ def render_sidebar():
             st.rerun()
 
 
+# ── LANDING PAGE ──
+
+def page_landing():
+    logo_html = ""
+    if LOGO_B64:
+        logo_html = f"<img src='data:image/png;base64,{LOGO_B64}' style='height:36px;width:auto;' />"
+
+    st.markdown(f"""
+    <div class='landing-header'>
+        <div class='landing-header-left'>
+            {logo_html}
+            <span class='landing-header-logo-text'>ProteinScan</span>
+        </div>
+        <div class='landing-header-nav'>
+            <a href='#fonctionnalites'>Fonctionnalites</a>
+            <a href='#comment-ca-marche'>Comment ca marche</a>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    header_col1, header_col2, header_col3 = st.columns([6, 1, 1])
+    with header_col2:
+        if st.button("Se connecter", key="header_login", use_container_width=True):
+            st.session_state.page = "login"
+            st.rerun()
+    with header_col3:
+        if st.button("Creer un compte", key="header_register", type="primary", use_container_width=True):
+            st.session_state.page = "register"
+            st.rerun()
+
+    hero_logo = ""
+    if LOGO_B64:
+        hero_logo = f"<img src='data:image/png;base64,{LOGO_B64}' style='height:120px;width:auto;margin-bottom:24px;' /><br/>"
+
+    st.markdown(f"""
+    <div class='landing-hero'>
+        {hero_logo}
+        <h1>Compare les proteines, trouve le <span>meilleur rapport qualite/prix</span></h1>
+        <p>Prix actualises, macros, cout au gramme de proteine, scores qualite detailles.<br/>L'outil de reference pour choisir ta whey en France.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col_cta_left, col_cta_mid, col_cta_right = st.columns([1, 2, 1])
+    with col_cta_mid:
+        if st.button("Commencer gratuitement", type="primary", use_container_width=True, key="hero_cta"):
+            st.session_state.page = "register"
+            st.rerun()
+
+    col_login_left, col_login_mid, col_login_right = st.columns([1, 2, 1])
+    with col_login_mid:
+        if st.button("Se connecter", use_container_width=True, key="hero_login"):
+            st.session_state.page = "login"
+            st.rerun()
+
+    st.markdown("""
+    <div class='landing-cards' id='fonctionnalites'>
+        <div class='landing-card'>
+            <div class='landing-card-icon'>&#x2694;</div>
+            <h3>Comparaison en 1 clic</h3>
+            <p>Compare jusqu'a 5 proteines cote a cote : prix, macros, ingredients, score qualite.</p>
+        </div>
+        <div class='landing-card'>
+            <div class='landing-card-icon'>&#x2605;</div>
+            <h3>Score qualite/prix</h3>
+            <p>Un algorithme transparent qui note chaque produit sur 10 : proteique, sante, prix.</p>
+        </div>
+        <div class='landing-card'>
+            <div class='landing-card-icon'>&#x21C4;</div>
+            <h3>Suivi promos & historique</h3>
+            <p>Prix actualises automatiquement. Suis l'evolution des offres du marche.</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("""
+    <div class='landing-steps' id='comment-ca-marche'>
+        <h2>Comment ca marche</h2>
+        <div class='landing-steps-grid'>
+            <div class='landing-step'>
+                <div class='landing-step-num'>1</div>
+                <h4>Tu cherches</h4>
+                <p>Parcours le catalogue ou lance une recherche pour decouvrir les meilleures wheys du marche francais.</p>
+            </div>
+            <div class='landing-step'>
+                <div class='landing-step-num'>2</div>
+                <h4>Tu compares</h4>
+                <p>Ajoute tes favoris au comparateur et analyse les differences cote a cote.</p>
+            </div>
+            <div class='landing-step'>
+                <div class='landing-step-num'>3</div>
+                <h4>Tu decides</h4>
+                <p>Consulte les scores, les avis de la communaute et choisis le meilleur produit pour toi.</p>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col_b1, col_b2 = st.columns(2)
+    with col_b1:
+        if st.button("Creer un compte gratuitement", type="primary", use_container_width=True, key="landing_register"):
+            st.session_state.page = "register"
+            st.rerun()
+    with col_b2:
+        if st.button("J'ai deja un compte", use_container_width=True, key="landing_login"):
+            st.session_state.page = "login"
+            st.rerun()
+
+    st.markdown("""
+    <div class='landing-footer'>
+        <p>ProteinScan &copy; 2025 &mdash; Comparateur de proteines whey en France</p>
+        <p><a href='#'>Mentions legales</a> &middot; <a href='#'>CGU</a> &middot; <a href='#'>Contact</a></p>
+    </div>
+    """, unsafe_allow_html=True)
+
+
 # ── AUTH PAGES ──
 
 def page_login():
     if LOGO_B64:
         st.markdown(f"""
         <div style='text-align:center;padding:40px 0 10px 0;'>
-            <img src='data:image/png;base64,{LOGO_B64}' style='height:160px;width:auto;' />
+            <img src='data:image/png;base64,{LOGO_B64}' style='height:120px;width:auto;' />
         </div>
-        <div style='text-align:center;color:#6b85b0;font-size:1em;margin-bottom:36px;letter-spacing:0.3px;'>
+        <div style='text-align:center;color:#6b85b0;font-size:1em;margin-bottom:24px;letter-spacing:0.3px;'>
             Comparateur de proteines whey en France
         </div>
         """, unsafe_allow_html=True)
-    else:
-        st.html("""
-        <div class='login-header'>
-            <div class='login-logo'>🧪</div>
-            <div class='login-title'>ProteinScan</div>
-            <div class='login-subtitle'>Comparateur de proteines whey en France</div>
+
+    st.markdown("<div style='max-width:420px;margin:0 auto;'>", unsafe_allow_html=True)
+    st.subheader("Connexion")
+    with st.form("login_form"):
+        email = st.text_input("Email")
+        password = st.text_input("Mot de passe", type="password")
+        submitted = st.form_submit_button("Se connecter", use_container_width=True)
+
+        if submitted:
+            if not email or not password:
+                st.error("Veuillez remplir tous les champs.")
+            else:
+                user = get_user_by_email(email)
+                if user and verify_password(password, user["password_hash"]):
+                    st.session_state.user = {
+                        "id": user["id"],
+                        "email": user["email"],
+                        "display_name": user["display_name"],
+                        "plan": user["plan"],
+                    }
+                    st.session_state.page = "catalogue"
+                    st.session_state.view_scan_id = None
+                    st.rerun()
+                else:
+                    st.error("Email ou mot de passe incorrect.")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    col_s1, col_s2 = st.columns(2)
+    with col_s1:
+        if st.button("Pas de compte ? Creer un compte", use_container_width=True, key="switch_to_register"):
+            st.session_state.page = "register"
+            st.rerun()
+    with col_s2:
+        if st.button("Retour a l'accueil", use_container_width=True, key="back_landing_from_login"):
+            st.session_state.page = "landing"
+            st.rerun()
+
+
+def page_register():
+    if LOGO_B64:
+        st.markdown(f"""
+        <div style='text-align:center;padding:40px 0 10px 0;'>
+            <img src='data:image/png;base64,{LOGO_B64}' style='height:120px;width:auto;' />
         </div>
-        """)
+        <div style='text-align:center;color:#6b85b0;font-size:1em;margin-bottom:24px;letter-spacing:0.3px;'>
+            Comparateur de proteines whey en France
+        </div>
+        """, unsafe_allow_html=True)
 
-    col_left, col_right = st.columns(2)
+    st.markdown("<div style='max-width:420px;margin:0 auto;'>", unsafe_allow_html=True)
+    st.subheader("Creer un compte")
+    with st.form("signup_form"):
+        new_name = st.text_input("Nom")
+        new_email = st.text_input("Email", key="signup_email")
+        new_password = st.text_input("Mot de passe", type="password", key="signup_password")
+        new_password2 = st.text_input("Confirmer le mot de passe", type="password", key="signup_password2")
+        signup_submitted = st.form_submit_button("Creer mon compte", use_container_width=True)
 
-    with col_left:
-        st.subheader("Connexion")
-        with st.form("login_form"):
-            email = st.text_input("Email")
-            password = st.text_input("Mot de passe", type="password")
-            submitted = st.form_submit_button("Se connecter", use_container_width=True)
-
-            if submitted:
-                if not email or not password:
-                    st.error("Veuillez remplir tous les champs.")
+        if signup_submitted:
+            if not new_name or not new_email or not new_password:
+                st.error("Veuillez remplir tous les champs.")
+            elif len(new_password) < 6:
+                st.error("Le mot de passe doit contenir au moins 6 caracteres.")
+            elif new_password != new_password2:
+                st.error("Les mots de passe ne correspondent pas.")
+            elif "@" not in new_email:
+                st.error("Veuillez entrer une adresse email valide.")
+            else:
+                pw_hash = hash_password(new_password)
+                user = create_user(new_email, pw_hash, new_name)
+                if user:
+                    st.session_state.user = {
+                        "id": user["id"],
+                        "email": user["email"],
+                        "display_name": user["display_name"],
+                        "plan": user["plan"],
+                    }
+                    st.session_state.page = "catalogue"
+                    st.session_state.view_scan_id = None
+                    st.rerun()
                 else:
-                    user = get_user_by_email(email)
-                    if user and verify_password(password, user["password_hash"]):
-                        st.session_state.user = {
-                            "id": user["id"],
-                            "email": user["email"],
-                            "display_name": user["display_name"],
-                            "plan": user["plan"],
-                        }
-                        st.session_state.page = "dashboard"
-                        st.session_state.view_scan_id = None
-                        st.rerun()
-                    else:
-                        st.error("Email ou mot de passe incorrect.")
+                    st.error("Cet email est deja utilise.")
 
-    with col_right:
-        st.subheader("Inscription")
-        with st.form("signup_form"):
-            new_name = st.text_input("Nom")
-            new_email = st.text_input("Email", key="signup_email")
-            new_password = st.text_input("Mot de passe", type="password", key="signup_password")
-            new_password2 = st.text_input("Confirmer le mot de passe", type="password", key="signup_password2")
-            signup_submitted = st.form_submit_button("Creer mon compte", use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-            if signup_submitted:
-                if not new_name or not new_email or not new_password:
-                    st.error("Veuillez remplir tous les champs.")
-                elif len(new_password) < 6:
-                    st.error("Le mot de passe doit contenir au moins 6 caracteres.")
-                elif new_password != new_password2:
-                    st.error("Les mots de passe ne correspondent pas.")
-                elif "@" not in new_email:
-                    st.error("Veuillez entrer une adresse email valide.")
-                else:
-                    pw_hash = hash_password(new_password)
-                    user = create_user(new_email, pw_hash, new_name)
-                    if user:
-                        st.session_state.user = {
-                            "id": user["id"],
-                            "email": user["email"],
-                            "display_name": user["display_name"],
-                            "plan": user["plan"],
-                        }
-                        st.session_state.page = "dashboard"
-                        st.rerun()
-                    else:
-                        st.error("Cet email est deja utilise.")
-
-    st.html("""
-    <div style='text-align:center;margin-top:32px;padding:16px 24px;background:linear-gradient(135deg, rgba(12,17,30,0.6), rgba(10,14,24,0.4));border:1px solid rgba(74,158,237,0.12);border-radius:12px;color:#6b85b0;font-size:0.88em;'>
+    st.markdown("""
+    <div style='text-align:center;margin-top:16px;padding:12px 20px;background:linear-gradient(135deg, rgba(12,17,30,0.6), rgba(10,14,24,0.4));border:1px solid rgba(74,158,237,0.12);border-radius:12px;color:#6b85b0;font-size:0.85em;max-width:420px;margin-left:auto;margin-right:auto;'>
         <span style='color:#4a9eed;font-weight:700;'>Plan Gratuit</span> : 3 scans par mois &nbsp;|&nbsp;
         <span style='color:#4a9eed;font-weight:700;'>Plan Pro</span> : scans illimites (bientot disponible)
     </div>
-    """)
+    """, unsafe_allow_html=True)
+
+    col_s1, col_s2 = st.columns(2)
+    with col_s1:
+        if st.button("Deja un compte ? Se connecter", use_container_width=True, key="switch_to_login"):
+            st.session_state.page = "login"
+            st.rerun()
+    with col_s2:
+        if st.button("Retour a l'accueil", use_container_width=True, key="back_landing_from_register"):
+            st.session_state.page = "landing"
+            st.rerun()
 
 
 # ── DASHBOARD ──
@@ -1718,11 +2188,11 @@ def page_view_scan():
 
 # ── SCAN PAGE ──
 
-def page_scan():
+def page_search():
     user = st.session_state.user
     render_sidebar()
 
-    render_page_header("Nouveau scan")
+    render_page_header("Recherche de proteines")
 
     tab_auto, tab_manual = st.tabs(["Scan automatique", "Analyse manuelle d'URLs"])
 
@@ -1885,6 +2355,341 @@ def page_catalogue():
         return
 
     render_catalog_results(products)
+
+
+# ── COMPARE PAGE ──
+
+def page_compare():
+    user = st.session_state.user
+    render_sidebar()
+
+    render_page_header("Comparateur")
+
+    compare_ids = st.session_state.compare_list
+    if not compare_ids:
+        st.info("Aucun produit dans le comparateur. Ajoutez des produits depuis le Catalogue.")
+        if st.button("Aller au catalogue", type="primary"):
+            st.session_state.page = "catalogue"
+            st.rerun()
+        return
+
+    products = get_products_by_ids(compare_ids)
+    if not products:
+        st.warning("Les produits selectionnes n'ont pas ete trouves.")
+        st.session_state.compare_list = []
+        return
+
+    st.markdown(f"**{len(products)} produit(s) en comparaison** (max 5)")
+
+    if st.button("Vider le comparateur", key="clear_compare"):
+        st.session_state.compare_list = []
+        st.rerun()
+
+    cols = st.columns(len(products))
+    for i, p in enumerate(products):
+        with cols[i]:
+            name = p.get("name", "Produit")
+            brand = p.get("brand", "")
+            s_final = p.get("score_final")
+            s_prot = p.get("score_proteique")
+            s_sante = p.get("score_sante")
+            prix_kg = p.get("offer_prix_par_kg")
+            prot = p.get("proteines_100g")
+            poids = p.get("offer_poids_kg")
+            prix = p.get("offer_prix")
+            type_whey = p.get("type_whey", "unknown")
+            origin = p.get("origin_label", "Inconnu")
+            leucine = p.get("leucine_g")
+            bcaa = p.get("bcaa_per_100g_prot")
+            ingr_count = p.get("ingredient_count")
+            has_sucr = p.get("has_sucralose", False)
+            has_ace = p.get("has_acesulfame_k", False)
+            url = p.get("offer_url", "")
+
+            score_display = f"{s_final:.1f}/10" if is_valid(s_final) else "N/A"
+            color = score_color_10(s_final)
+
+            st.markdown(f"""
+            <div style='text-align:center;padding:16px 8px;background:linear-gradient(135deg, rgba(17,24,39,0.7), rgba(15,20,35,0.4));border:1px solid rgba(74,158,237,0.15);border-radius:14px;margin-bottom:12px;'>
+                <div style='font-size:0.85em;color:#8b9dc3;'>{html_module.escape(brand)}</div>
+                <div style='font-size:1em;font-weight:700;color:#e2e8f0;margin:4px 0;'>{html_module.escape(name[:60])}</div>
+                <div style='font-size:1.6em;font-weight:800;color:{color};'>{score_display}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            st.markdown("**Donnees cles**")
+            st.markdown(f"- **Type** : {type_whey.capitalize() if type_whey != 'unknown' else 'N/D'}")
+            st.markdown(f"- **Prot/100g** : {prot:.1f}g" if is_valid(prot) else "- **Prot/100g** : N/D")
+            st.markdown(f"- **Prix/kg** : {prix_kg:.0f} EUR" if is_valid(prix_kg) else "- **Prix/kg** : N/D")
+            st.markdown(f"- **Prix** : {prix:.2f} EUR" if is_valid(prix) else "- **Prix** : N/D")
+            st.markdown(f"- **Poids** : {poids:.2f} kg" if is_valid(poids) else "- **Poids** : N/D")
+
+            cout_30g = None
+            if is_valid(prot) and is_valid(prix_kg) and prot > 0:
+                cout_30g = (30 / prot) * (prix_kg / 10)
+            st.markdown(f"- **Cout 30g prot** : {cout_30g:.2f} EUR" if cout_30g else "- **Cout 30g prot** : N/D")
+
+            st.markdown(f"- **BCAA/100g prot** : {bcaa:.1f}g" if is_valid(bcaa) else "- **BCAA** : N/D")
+            st.markdown(f"- **Leucine** : {leucine:.1f}g" if is_valid(leucine) else "- **Leucine** : N/D")
+            st.markdown(f"- **Origine** : {origin}")
+            st.markdown(f"- **Ingredients** : {ingr_count}" if is_valid(ingr_count) else "- **Ingredients** : N/D")
+
+            eduls = []
+            if has_sucr: eduls.append("Sucralose")
+            if has_ace: eduls.append("Ace-K")
+            st.markdown(f"- **Edulcorants** : {', '.join(eduls) if eduls else 'Aucun'}")
+
+            st.markdown("**Scores**")
+            st.markdown(f"- Note finale : **{s_final:.1f}/10**" if is_valid(s_final) else "- Note finale : N/D")
+            st.markdown(f"- Proteique : **{s_prot:.1f}/10**" if is_valid(s_prot) else "- Proteique : N/D")
+            st.markdown(f"- Sante : **{s_sante:.1f}/10**" if is_valid(s_sante) else "- Sante : N/D")
+
+            if url:
+                st.markdown(f"[Voir le produit]({url})")
+
+            if st.button("Retirer", key=f"remove_compare_{p['id']}", use_container_width=True):
+                st.session_state.compare_list = [x for x in st.session_state.compare_list if x != p["id"]]
+                st.rerun()
+
+            if st.button("Voir fiche", key=f"goto_product_{p['id']}", use_container_width=True):
+                st.session_state.selected_product_id = p["id"]
+                st.session_state.page = "product"
+                st.rerun()
+
+
+# ── PRODUCT DETAIL PAGE ──
+
+def page_product():
+    user = st.session_state.user
+    render_sidebar()
+
+    product_id = st.session_state.selected_product_id
+    if not product_id:
+        st.warning("Aucun produit selectionne.")
+        if st.button("Retour au catalogue"):
+            st.session_state.page = "catalogue"
+            st.rerun()
+        return
+
+    product = get_product_by_id(product_id)
+    if not product:
+        st.error("Produit introuvable.")
+        if st.button("Retour au catalogue"):
+            st.session_state.page = "catalogue"
+            st.rerun()
+        return
+
+    if st.button("Retour au catalogue"):
+        st.session_state.page = "catalogue"
+        st.rerun()
+
+    name = product.get("name", "Produit inconnu")
+    brand = product.get("brand", "")
+    s_final = product.get("score_final")
+    s_prot = product.get("score_proteique")
+    s_sante = product.get("score_sante")
+    type_whey = product.get("type_whey", "unknown")
+    origin = product.get("origin_label", "Inconnu")
+    prot = product.get("proteines_100g")
+    leucine = product.get("leucine_g")
+    bcaa = product.get("bcaa_per_100g_prot")
+    ingr_count = product.get("ingredient_count")
+    ingredients = product.get("ingredients", "")
+
+    color = score_color_10(s_final)
+    score_display = f"{s_final:.1f}/10" if is_valid(s_final) else "N/A"
+
+    st.markdown(f"""
+    <div class='product-detail-header'>
+        <div class='product-detail-score'>
+            <div style='font-size:2.2em;font-weight:800;color:{color};'>{score_display}</div>
+            <div style='font-size:0.8em;color:#8b9dc3;'>Note finale</div>
+        </div>
+        <div class='product-detail-info'>
+            <h1>{html_module.escape(name)}</h1>
+            <div class='brand'>{html_module.escape(brand)}</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    mapped = {
+        "nom": name,
+        "marque": brand,
+        "proteines_100g": prot,
+        "type_whey": type_whey,
+        "origin_label": origin,
+        "has_sucralose": product.get("has_sucralose", False),
+        "has_acesulfame_k": product.get("has_acesulfame_k", False),
+        "has_aspartame": product.get("has_aspartame", False),
+        "has_aminogram": product.get("has_aminogram", False),
+        "mentions_bcaa": product.get("mentions_bcaa", False),
+        "has_artificial_flavors": product.get("has_artificial_flavors", False),
+        "has_thickeners": product.get("has_thickeners", False),
+        "has_colorants": product.get("has_colorants", False),
+        "ingredient_count": ingr_count,
+        "bcaa_per_100g_prot": bcaa,
+        "leucine_g": leucine,
+        "profil_suspect": product.get("profil_suspect", False),
+        "protein_suspect": product.get("protein_suspect", False),
+        "score_proteique": s_prot,
+        "score_sante": s_sante,
+        "score_final": s_final,
+        "score_global": product.get("score_global"),
+    }
+    whey_badge = get_whey_badge(type_whey)
+    origin_badge = get_origin_badge(origin)
+    sweetener_badge = get_sweetener_badges(
+        product.get("has_sucralose", False),
+        product.get("has_acesulfame_k", False),
+        product.get("has_aspartame", False),
+    )
+    st.markdown(f"<div style='margin:8px 0 20px 0;'>{whey_badge} {origin_badge} {sweetener_badge}</div>", unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Note proteique", f"{s_prot:.1f}/10" if is_valid(s_prot) else "N/D")
+    with col2:
+        st.metric("Note sante", f"{s_sante:.1f}/10" if is_valid(s_sante) else "N/D")
+    with col3:
+        price_score = calculate_price_score_10(None)
+        offers = get_product_offers(product_id)
+        if offers:
+            best = offers[0]
+            price_score = calculate_price_score_10(best.get("prix_par_kg"))
+        st.metric("Note prix", f"{price_score:.1f}/10" if is_valid(price_score) else "N/D")
+
+    st.divider()
+
+    detail_col, offers_col = st.columns([1, 1])
+
+    with detail_col:
+        st.subheader("Details nutritionnels")
+        st.markdown(f"- **Proteines / 100g** : {prot:.1f}g" if is_valid(prot) else "- **Proteines / 100g** : N/D")
+        st.markdown(f"- **BCAA / 100g prot** : {bcaa:.1f}g" if is_valid(bcaa) else "- **BCAA / 100g prot** : N/D")
+        st.markdown(f"- **Leucine** : {leucine:.1f}g" if is_valid(leucine) else "- **Leucine** : N/D")
+        st.markdown(f"- **Type de whey** : {type_whey.capitalize() if type_whey != 'unknown' else 'Non determine'}")
+        st.markdown(f"- **Origine** : {origin}")
+        st.markdown(f"- **Nombre d'ingredients** : {ingr_count}" if is_valid(ingr_count) else "- **Ingredients** : N/D")
+
+        if ingredients:
+            with st.expander("Liste des ingredients"):
+                st.text(ingredients)
+
+    with offers_col:
+        st.subheader("Offres disponibles")
+        offers = get_product_offers(product_id)
+        if not offers:
+            st.info("Aucune offre active pour ce produit.")
+        else:
+            for o in offers:
+                if not o.get("is_active", True):
+                    continue
+                prix_o = o.get("prix")
+                pkg_o = o.get("prix_par_kg")
+                merch = o.get("merchant", "Marchand")
+                url_o = o.get("url", "")
+                conf = o.get("confidence", 0)
+                st.markdown(f"""
+                <div style='background:linear-gradient(135deg, rgba(17,24,39,0.6), rgba(15,20,35,0.3));border:1px solid rgba(74,158,237,0.12);border-radius:12px;padding:14px 16px;margin-bottom:8px;'>
+                    <div style='font-weight:600;color:#e2e8f0;font-size:0.95em;'>{html_module.escape(str(merch))}</div>
+                    <div style='color:#4a9eed;font-size:1.1em;font-weight:700;margin:4px 0;'>{f'{prix_o:.2f} EUR' if prix_o else 'Prix N/D'} {f'({pkg_o:.0f} EUR/kg)' if pkg_o else ''}</div>
+                    <div style='font-size:0.8em;color:#5a6a8a;'>Confiance: {conf:.0%}</div>
+                    {'<a href="' + url_o + '" target="_blank" style="color:#4a9eed;font-size:0.85em;">Voir l offre</a>' if url_o else ''}
+                </div>
+                """, unsafe_allow_html=True)
+
+    compare_ids = st.session_state.compare_list
+    if product_id in compare_ids:
+        if st.button("Retirer du comparateur", use_container_width=True, key="prod_remove_compare"):
+            st.session_state.compare_list = [x for x in compare_ids if x != product_id]
+            st.rerun()
+    else:
+        if len(compare_ids) < 5:
+            if st.button("Ajouter au comparateur", type="primary", use_container_width=True, key="prod_add_compare"):
+                st.session_state.compare_list.append(product_id)
+                st.rerun()
+
+    st.divider()
+
+    st.subheader("Avis de la communaute")
+
+    rating_data = get_average_rating(product_id)
+    avg_r = rating_data["average"]
+    count_r = rating_data["count"]
+
+    if count_r > 0:
+        stars_str = ""
+        for i in range(1, 6):
+            if avg_r >= i:
+                stars_str += "<span style='color:#f59e0b;font-size:1.3em;'>&#9733;</span>"
+            elif avg_r >= i - 0.5:
+                stars_str += "<span style='color:#f59e0b;font-size:1.3em;'>&#9733;</span>"
+            else:
+                stars_str += "<span style='color:#3a4a6a;font-size:1.3em;'>&#9733;</span>"
+        st.markdown(f"<div>{stars_str} <span style='color:#e2e8f0;font-weight:600;'>{avg_r:.1f}/5</span> <span style='color:#8b9dc3;font-size:0.9em;'>({count_r} avis)</span></div>", unsafe_allow_html=True)
+    else:
+        st.markdown("<div style='color:#8b9dc3;'>Aucun avis pour le moment. Soyez le premier !</div>", unsafe_allow_html=True)
+
+    with st.expander("Ecrire un avis", expanded=count_r == 0):
+        with st.form("review_form"):
+            review_rating = st.slider("Note", 1, 5, 4, key="review_rating")
+            review_title = st.text_input("Titre (optionnel)", key="review_title")
+            review_comment = st.text_area("Commentaire", key="review_comment", placeholder="Partagez votre experience avec ce produit...")
+            review_purchased = st.text_input("Achete sur... (optionnel)", key="review_purchased", placeholder="Ex: nutrimuscle.com")
+            review_submit = st.form_submit_button("Publier mon avis", use_container_width=True)
+
+            if review_submit:
+                if not review_comment.strip():
+                    st.error("Veuillez ecrire un commentaire.")
+                else:
+                    result = create_review(
+                        product_id=product_id,
+                        user_id=user["id"],
+                        rating=review_rating,
+                        title=review_title.strip(),
+                        comment=review_comment.strip(),
+                        purchased_from=review_purchased.strip(),
+                    )
+                    if result:
+                        st.success("Avis publie !")
+                        st.rerun()
+                    else:
+                        st.error("Erreur lors de la publication.")
+
+    reviews = get_reviews_for_product(product_id)
+    if reviews:
+        sort_reviews = st.selectbox("Trier par", ["Plus recents", "Les mieux notes"], key="review_sort")
+        if sort_reviews == "Les mieux notes":
+            reviews = sorted(reviews, key=lambda r: r.get("rating", 0), reverse=True)
+
+        for rev in reviews:
+            rev_stars = "".join(["<span style='color:#f59e0b;'>&#9733;</span>" if j < rev.get("rating", 0) else "<span style='color:#3a4a6a;'>&#9733;</span>" for j in range(5)])
+            rev_date = rev.get("created_at", "")
+            if hasattr(rev_date, "strftime"):
+                rev_date = rev_date.strftime("%d/%m/%Y")
+            rev_author = html_module.escape(rev.get("display_name", "Utilisateur"))
+            rev_title = html_module.escape(rev.get("title", ""))
+            rev_text = html_module.escape(rev.get("comment", ""))
+            rev_purchased = rev.get("purchased_from", "")
+
+            purchased_html = f"<div style='font-size:0.8em;color:#5a6a8a;margin-top:4px;'>Achete sur : {html_module.escape(rev_purchased)}</div>" if rev_purchased else ""
+
+            st.markdown(f"""
+            <div class='review-card'>
+                <div class='review-header'>
+                    <div class='review-author'>{rev_author}</div>
+                    <div class='review-date'>{rev_date}</div>
+                </div>
+                <div class='review-stars'>{rev_stars}</div>
+                {'<div class="review-title">' + rev_title + '</div>' if rev_title else ''}
+                <div class='review-comment'>{rev_text}</div>
+                {purchased_html}
+            </div>
+            """, unsafe_allow_html=True)
+
+            if st.button("Signaler", key=f"flag_review_{rev['id']}", type="secondary"):
+                flag_review(rev["id"])
+                st.info("Avis signale. Merci.")
 
 
 # ── ADMIN PAGE ──
@@ -2054,6 +2859,30 @@ def page_admin():
             use_container_width=True,
             hide_index=True,
         )
+
+    st.divider()
+    st.subheader("Moderation des avis")
+    flagged = get_flagged_reviews()
+    if not flagged:
+        st.info("Aucun avis signale.")
+    else:
+        st.warning(f"{len(flagged)} avis signale(s)")
+        for rev in flagged:
+            rev_date = rev.get("created_at", "")
+            if hasattr(rev_date, "strftime"):
+                rev_date = rev_date.strftime("%d/%m/%Y %H:%M")
+            st.markdown(f"""
+            <div class='review-card'>
+                <div style='font-weight:600;color:#e2e8f0;'>{html_module.escape(rev.get('product_name', ''))}</div>
+                <div style='color:#8b9dc3;font-size:0.85em;'>Par {html_module.escape(rev.get('display_name', ''))} - {rev_date}</div>
+                <div style='color:#f59e0b;margin:4px 0;'>{'&#9733;' * rev.get('rating', 0)}{'&#9734;' * (5 - rev.get('rating', 0))}</div>
+                <div style='color:#c8d6e5;'>{html_module.escape(rev.get('comment', ''))}</div>
+            </div>
+            """, unsafe_allow_html=True)
+            if st.button(f"Masquer cet avis", key=f"hide_rev_{rev['id']}"):
+                hide_review(rev["id"])
+                st.success("Avis masque.")
+                st.rerun()
 
     st.divider()
     st.subheader("🏥 Discovery Health")
@@ -2253,20 +3082,33 @@ def page_admin():
 
 # ── ROUTER ──
 
+page = st.session_state.page
+
 if st.session_state.user is None:
-    page_login()
+    if page == "login":
+        page_login()
+    elif page == "register":
+        page_register()
+    else:
+        page_landing()
 else:
-    page = st.session_state.page
     if page == "dashboard":
         page_dashboard()
-    elif page == "scan":
-        page_scan()
+    elif page == "search":
+        page_search()
     elif page == "catalogue":
         page_catalogue()
+    elif page == "compare":
+        page_compare()
+    elif page == "product":
+        page_product()
     elif page == "admin":
         page_admin()
-    elif page == "login":
-        st.session_state.page = "dashboard"
-        page_dashboard()
+    elif page == "scan":
+        st.session_state.page = "search"
+        st.rerun()
+    elif page in ("login", "register", "landing"):
+        st.session_state.page = "catalogue"
+        st.rerun()
     else:
-        page_dashboard()
+        page_catalogue()

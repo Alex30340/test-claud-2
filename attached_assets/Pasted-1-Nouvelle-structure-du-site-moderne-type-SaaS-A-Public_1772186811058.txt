@@ -1,0 +1,144 @@
+1) Nouvelle structure du site (moderne, type SaaS)
+A. Public (sans compte)
+
+/ → Page d’accueil (Landing)
+
+/pricing (optionnel) → offre / freemium
+
+/features (optionnel) → comparateur, suivi prix, etc.
+
+/login → page connexion (mais aussi accessible via bouton)
+
+/register → création de compte
+
+✅ Sur la landing : bouton “Se connecter” en haut à droite + “Créer un compte”.
+
+B. App (après connexion)
+
+/app → dashboard
+
+/app/search → recherche protéines (ta page actuelle)
+
+/app/compare → comparateur
+
+/app/product/:id → fiche produit + commentaires
+
+2) Landing page (page d’accueil) : le design “sobre + pro”
+Header (sticky)
+
+Logo à gauche
+
+Liens : Fonctionnalités / Comparateur / Avis / FAQ (facultatif)
+
+Bouton “Se connecter” (en haut à droite)
+
+Bouton secondaire “Créer un compte”
+
+Hero (bloc principal)
+
+Titre clair : “Compare les protéines, trouve le meilleur rapport qualité/prix”
+
+Sous-titre : “Prix actualisés, macros, coût au gramme de protéine, promos…”
+
+CTA : “Tester la recherche” (ou “Commencer gratuitement”)
+
+Visuel à droite : capture stylisée du dashboard (ou une mockup)
+
+3 cartes “valeur”
+
+“Comparaison en 1 clic”
+
+“Score qualité/prix”
+
+“Suivi promos & historique”
+
+Section “Comment ça marche”
+
+Tu cherches
+
+Tu ajoutes au comparateur
+
+Tu décides avec le score + avis
+
+Footer
+
+Mentions / CGU / Contact
+
+➡️ Style : même couleurs que ton logiciel, mais avec plus d’espace, typographie plus nette, cards arrondies, ombres légères, transitions.
+
+3) Comparateur de protéines (feature clé)
+UX proposée
+
+Sur chaque produit : bouton “+ Comparer”
+
+En haut (ou en bas type “barre flottante”) : “Comparateur (3)” → ouvrir
+
+Écran /app/compare
+
+Comparaison en tableau (simple et lisible) :
+
+Prix / kg
+
+g de prot / 100g
+
+Coût pour 30g de prot (hyper parlant)
+
+Calories / 100g
+
+Sucre / 100g
+
+Leucine/BCAA (si dispo)
+
+Liste ingrédients (résumé)
+
+Source (lien shop)
+
+Note communauté (moyenne)
+
+Ton “score” (ton algo)
+
+filtres :
+
+“trier par : prix, score, prot/€, avis”
+
+✅ Important : limiter le comparateur à 3–5 produits pour rester propre.
+
+4) Espace commentaires (sobre, utile, modérable)
+
+Sur la page produit /app/product/:id :
+
+Bloc “Avis”
+
+Note globale (étoiles) + nb avis
+
+Tags rapides (facultatif) : “Goût”, “Digestion”, “Solubilité”, “Rapport Q/P”
+
+Commentaires triables : “Plus récents / Les mieux notés”
+
+Pour poster un avis
+
+réservé aux utilisateurs connectés
+
+champs : note (1–5), titre, commentaire
+
+option : “je l’ai acheté sur…” (facultatif)
+
+modération simple : signaler / masquer si abus
+
+➡️ Techniquement, c’est une table reviews liée à product_id + user_id.
+
+5) Garder tes couleurs, mais rendre le tout “plus moderne”
+
+Sans changer ta charte :
+
+plus de blanc / espace
+
+typographie plus “SaaS”
+
+cartes arrondies (12–16px)
+
+boutons plus nets (hover)
+
+header sticky + fond légèrement transparent
+
+sections alternées (fond très léger)

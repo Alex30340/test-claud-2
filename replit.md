@@ -6,8 +6,8 @@ Application SaaS Python/Streamlit pour comparer les proteines whey en France. Mo
 ## Architecture
 
 ### Files
-- `app.py` - Interface Streamlit SaaS (auth, dashboard, catalogue, scan, admin, cartes produit V2)
-- `db.py` - Couche base de donnees PostgreSQL (users, scans, scan_items, products, offers, pipeline_runs)
+- `app.py` - Interface Streamlit SaaS (landing page, login/register separes, dashboard, catalogue, recherche, comparateur, fiche produit + avis, admin, cartes produit V2)
+- `db.py` - Couche base de donnees PostgreSQL (users, scans, scan_items, products, offers, pipeline_runs, reviews)
 - `auth.py` - Hashage et verification de mots de passe (bcrypt)
 - `extractor.py` - Extraction prix 4 niveaux (JSON-LD, OpenGraph, Next/Nuxt, regex), currency, poids, detection needs_js_render
 - `validator.py` - Validation prix/poids, compute_confidence_v2 avec support needs_js_render
@@ -28,6 +28,7 @@ Application SaaS Python/Streamlit pour comparer les proteines whey en France. Mo
 - `products` - Catalogue stable (name, brand, type_whey, nutrition, ingredients, scores, origin, normalized_key pour dedup)
 - `offers` - Offres marchands volatiles (product_id FK, merchant, url, prix, poids_kg, prix_par_kg, confidence, fail_count, is_active, discovery_source, needs_js_render, price_source)
 - `pipeline_runs` - Historique des executions Discovery/Refresh (run_type, status, counts, timestamps)
+- `reviews` - Avis utilisateurs (product_id FK, user_id FK, rating 1-5, title, comment, purchased_from, is_flagged, is_hidden, created_at)
 
 ### Product/Offer Architecture
 - **Product** = donnees stables (ingredients, scores, type whey, origine, flags edulcorants/additifs)
@@ -131,11 +132,15 @@ Commence a 10, puis malus :
 - Extraction bloc ingredients depuis page HTML
 
 ### UI Pages
-- **Login/Signup** : authentification utilisateur
+- **Landing** : page publique (hero, 3 cartes valeur, "Comment ca marche", footer ProteinScan)
+- **Login** : page connexion separee (email, password, lien vers register)
+- **Register** : page inscription separee (nom, email, password, confirm, lien vers login)
 - **Dashboard** : tableau de bord avec historique des scans
-- **Catalogue** : vue du catalogue produit (Product/Offer), filtres, tri, badges confiance
-- **Nouveau scan** : scan automatique (Brave) ou analyse manuelle d'URLs
-- **Admin** : lancer Discovery/Refresh, voir historique pipelines, stats catalogue
+- **Catalogue** : vue du catalogue produit (Product/Offer), filtres, tri, badges confiance, boutons comparer
+- **Recherche** : scan automatique (Brave) ou analyse manuelle d'URLs (ex "Nouveau scan")
+- **Comparateur** : comparaison cote a cote de 3-5 produits (prix, scores, nutrition)
+- **Fiche produit** : detail produit + offres marchands + avis utilisateurs (notes, commentaires, signaler)
+- **Admin** : lancer Discovery/Refresh, moderation avis signales, historique pipelines, stats catalogue
 - **Vue scan** : detail d'un scan passe
 
 ### UI V2 Features
