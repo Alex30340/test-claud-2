@@ -159,7 +159,8 @@ Commence a 10, puis malus :
 Multi-couche pour maximiser la couverture :
 1. JSON-LD (schema.org Product) - highest priority for price and product data
    - offers.price, offers.priceSpecification.price, offers.lowPrice
-2. Open Graph meta tags (product:price:amount, og:price:amount, twitter:data1)
+   - image (string, array, or object with url/contentUrl)
+2. Open Graph meta tags (product:price:amount, og:price:amount, og:image, twitter:data1)
 3. Scripts JSON (Next.js __NEXT_DATA__, Nuxt __NUXT__, window.__INITIAL_STATE__)
    - Walk JSON recursively pour trouver "price"
 4. Regex fallback sur HTML :
@@ -169,6 +170,7 @@ Multi-couche pour maximiser la couverture :
    - Exclusion contextes parasites (abonnement, livraison, a partir de)
 5. Bloc ingredients pour detection edulcorants et additifs
 6. Extraction amino acids (leucine, isoleucine, valine, BCAA) depuis texte page
+7. Product image extraction : JSON-LD image > og:image > microdata image (relative URLs resolved)
 
 ### JavaScript Render Detection
 - Si aucun prix detecte MAIS presence Next.js/Nuxt/React OU boutons panier => needs_js_render=True

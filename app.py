@@ -872,6 +872,28 @@ div.stAlert {
     color: #8b9dc3;
     font-size: 1.05em;
 }
+.ps-img {
+    width: 80px;
+    height: 80px;
+    object-fit: contain;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(74, 158, 237, 0.1);
+    flex-shrink: 0;
+}
+.ps-img-placeholder {
+    width: 80px;
+    height: 80px;
+    border-radius: 10px;
+    background: rgba(74, 158, 237, 0.06);
+    border: 1px solid rgba(74, 158, 237, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2em;
+    color: rgba(74, 158, 237, 0.25);
+    flex-shrink: 0;
+}
 </style>
 """
 
@@ -1183,6 +1205,12 @@ def render_product_card_v2(rank, row):
     if is_low_transp:
         extra_badges += "<span class='ps-badge ps-badge-transp'>🔍 Transparence faible</span>"
 
+    image_url = row.get("image_url", "")
+    if image_url:
+        img_html = f"<img src='{html_module.escape(image_url)}' class='ps-img' alt='' onerror=\"this.style.display='none';this.nextElementSibling.style.display='flex';\" /><div class='ps-img-placeholder' style='display:none;'>🥛</div>"
+    else:
+        img_html = "<div class='ps-img-placeholder'>🥛</div>"
+
     why_text = build_why_text(row)
     link_html = f"<a href='{url}' target='_blank' class='ps-link'>🔗 Voir le produit</a>" if url else ""
 
@@ -1200,6 +1228,10 @@ def render_product_card_v2(rank, row):
           <div class='ps-stars'>{stars_global}</div>
           <div class='ps-score-big' style='color:{color};'>{final_display}</div>
           <div style='font-size:0.75em;color:#888;'>{qual_label}</div>
+        </div>
+
+        <div style='flex-shrink:0;text-align:center;'>
+          {img_html}
         </div>
 
         <div style='flex:1;min-width:250px;'>
@@ -1567,6 +1599,7 @@ def render_catalog_card(rank, product):
         "score_sante": product.get("score_sante"),
         "score_global": product.get("score_global"),
         "score_final": product.get("score_final"),
+        "image_url": product.get("image_url"),
     }
 
     render_product_card_v2(rank, mapped)
@@ -2499,11 +2532,20 @@ def page_product():
     color = score_color_10(s_final)
     score_display = f"{s_final:.1f}/10" if is_valid(s_final) else "N/A"
 
+    product_image_url = product.get("image_url", "")
+    if product_image_url:
+        product_img_html = f"<img src='{html_module.escape(product_image_url)}' style='width:120px;height:120px;object-fit:contain;border-radius:12px;background:rgba(255,255,255,0.06);border:1px solid rgba(74,158,237,0.1);' alt='' onerror=\"this.style.display='none';this.nextElementSibling.style.display='flex';\" /><div class='ps-img-placeholder' style='display:none;width:120px;height:120px;font-size:3em;border-radius:12px;'>🥛</div>"
+    else:
+        product_img_html = "<div class='ps-img-placeholder' style='width:120px;height:120px;font-size:3em;border-radius:12px;'>🥛</div>"
+
     st.markdown(f"""
     <div class='product-detail-header'>
         <div class='product-detail-score'>
             <div style='font-size:2.2em;font-weight:800;color:{color};'>{score_display}</div>
             <div style='font-size:0.8em;color:#8b9dc3;'>Note finale</div>
+        </div>
+        <div style='flex-shrink:0;'>
+            {product_img_html}
         </div>
         <div class='product-detail-info'>
             <h1>{html_module.escape(name)}</h1>
@@ -2535,6 +2577,7 @@ def page_product():
         "score_sante": s_sante,
         "score_final": s_final,
         "score_global": product.get("score_global"),
+        "image_url": product.get("image_url"),
     }
     whey_badge = get_whey_badge(type_whey)
     origin_badge = get_origin_badge(origin)

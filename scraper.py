@@ -1002,11 +1002,20 @@ def extract_product_data(url: str) -> dict | None:
         brand = ""
         currency = "EUR"
         availability = ""
+        image_url = ""
 
         if jsonld:
             name = jsonld.get("name", "")
             brand_data = jsonld.get("brand", {})
             brand = brand_data.get("name", "") if isinstance(brand_data, dict) else str(brand_data)
+
+            jld_image = jsonld.get("image", "")
+            if isinstance(jld_image, list):
+                image_url = jld_image[0] if jld_image else ""
+            elif isinstance(jld_image, dict):
+                image_url = jld_image.get("url", "") or jld_image.get("contentUrl", "")
+            else:
+                image_url = str(jld_image) if jld_image else ""
 
             offers = jsonld.get("offers", {})
             if isinstance(offers, list):
@@ -1026,6 +1035,11 @@ def extract_product_data(url: str) -> dict | None:
             brand = og.get("product:brand", "") or microdata.get("brand", "")
         if not brand:
             brand = extract_brand_from_text(name, url)
+        if not image_url:
+            image_url = og.get("og:image", "") or microdata.get("image", "")
+        if image_url and not image_url.startswith("http"):
+            from urllib.parse import urljoin
+            image_url = urljoin(url, image_url)
         if not currency or currency == "EUR":
             currency = extract_currency(soup)
         if not availability:
@@ -1202,6 +1216,7 @@ def extract_product_data(url: str) -> dict | None:
             "price_score_10": final_result["price_score_10"],
             "is_top_qualite": final_result["is_top_qualite"],
             "is_low_transparency": final_result["is_low_transparency"],
+            "image_url": image_url if image_url else None,
             "date_recuperation": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "_has_jsonld": jsonld is not None,
             "_price_source": price_source,
@@ -1293,6 +1308,7 @@ def split_product_offer(raw: dict) -> tuple[dict, dict]:
         "score_sante": raw.get("score_sante"),
         "score_global": raw.get("score_global"),
         "score_final": raw.get("score_final"),
+        "image_url": raw.get("image_url"),
     }
 
     merchant = urlparse(raw.get("url", "")).netloc.replace("www.", "")
@@ -1685,6 +1701,22 @@ def refresh_offer_price(url: str) -> dict | None:
         }
         confidence = compute_confidence_v2(refresh_data, has_jsonld=has_jsonld, needs_js_render=needs_js)
 
+        image_url = ""
+        if jsonld:
+            jld_image = jsonld.get("image", "")
+            if isinstance(jld_image, list):
+                image_url = jld_image[0] if jld_image else ""
+            elif isinstance(jld_image, dict):
+                image_url = jld_image.get("url", "") or jld_image.get("contentUrl", "")
+            else:
+                image_url = str(jld_image) if jld_image else ""
+        if not image_url:
+            og = extract_og_meta(soup)
+            image_url = og.get("og:image", "")
+        if image_url and not image_url.startswith("http"):
+            from urllib.parse import urljoin
+            image_url = urljoin(url, image_url)
+
         return {
             "prix": price,
             "prix_par_kg": price_per_kg,
@@ -1692,6 +1724,7 @@ def refresh_offer_price(url: str) -> dict | None:
             "confidence": confidence,
             "needs_js_render": needs_js,
             "price_source": price_source,
+            "image_url": image_url if image_url else None,
         }
 
     except Exception as e:
@@ -1700,7 +1733,7 @@ def refresh_offer_price(url: str) -> dict | None:
 
 
 def run_refresh(progress_callback=None, status_callback=None) -> dict:
-    from db import get_active_offers, update_offer_price, mark_offer_failed
+    from db import get_active_offers, update_offer_price, mark_offer_failed, update_product_image
     from db import create_pipeline_run, update_pipeline_run
 
     run_id = create_pipeline_run("refresh")
@@ -1727,6 +1760,11 @@ def run_refresh(progress_callback=None, status_callback=None) -> dict:
                     disponibilite=result.get("disponibilite", ""),
                     confidence=result.get("confidence", 0.5),
                 )
+                if result.get("image_url") and offer.get("product_id"):
+                    try:
+                        update_product_image(offer["product_id"], result["image_url"])
+                    except Exception:
+                        pass
                 stats["updated"] += 1
             else:
                 mark_offer_failed(offer["id"])

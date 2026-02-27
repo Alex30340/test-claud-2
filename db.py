@@ -173,6 +173,7 @@ def init_db():
         ("protein_source", "VARCHAR(50)"),
         ("protein_confidence", "FLOAT DEFAULT 0.0"),
         ("protein_suspect", "BOOLEAN DEFAULT FALSE"),
+        ("image_url", "TEXT"),
     ]
     for col_name, col_type in product_new_columns:
         try:
@@ -406,7 +407,7 @@ def upsert_product(product_data: dict) -> int:
             "origin_label", "origin_confidence", "made_in_france",
             "profil_suspect", "protein_source", "protein_confidence", "protein_suspect",
             "score_proteique", "score_sante", "score_global",
-            "score_final", "needs_review",
+            "score_final", "needs_review", "image_url",
         ]
 
         values = {
@@ -441,6 +442,7 @@ def upsert_product(product_data: dict) -> int:
             "score_global": product_data.get("score_global"),
             "score_final": product_data.get("score_final"),
             "needs_review": product_data.get("needs_review", False),
+            "image_url": product_data.get("image_url"),
         }
 
         if existing:
@@ -811,6 +813,20 @@ def flag_review(review_id: int) -> bool:
         )
         conn.commit()
         return cur.rowcount > 0
+    finally:
+        cur.close()
+        conn.close()
+
+
+def update_product_image(product_id: int, image_url: str):
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "UPDATE products SET image_url = %s, updated_at = NOW() WHERE id = %s AND (image_url IS NULL OR image_url = '')",
+            (image_url, product_id),
+        )
+        conn.commit()
     finally:
         cur.close()
         conn.close()
