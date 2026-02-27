@@ -554,12 +554,41 @@ def upsert_product(product_data: dict) -> int:
         }
 
         if existing:
-            update_fields = [f for f in fields if f != "normalized_key"]
-            set_clause = ", ".join(f"{f} = %s" for f in update_fields)
-            set_clause += ", updated_at = NOW()"
-            params = [values[f] for f in update_fields] + [existing["id"]]
-            cur.execute(f"UPDATE products SET {set_clause} WHERE id = %s RETURNING id", params)
-            product_id = cur.fetchone()["id"]
+            preserve_fields = {
+                "proteines_100g", "ingredients", "ingredient_count", "image_url",
+                "score_proteique", "score_sante", "score_global", "score_final",
+                "bcaa_per_100g_prot", "leucine_g", "isoleucine_g", "valine_g",
+                "amino_profile", "amino_base", "raw_evidence", "nutrition_sources",
+                "carbs_per_100g", "sugar_per_100g", "fat_per_100g", "sat_fat_per_100g",
+                "kcal_per_100g", "salt_per_100g", "fiber_per_100g",
+                "glutamine_g", "arginine_g", "lysine_g",
+                "protein_source", "protein_confidence",
+                "origin_label", "origin_confidence",
+                "type_whey",
+            }
+            cur.execute("SELECT * FROM products WHERE id = %s", (existing["id"],))
+            existing_row = cur.fetchone()
+
+            update_fields = []
+            for f in fields:
+                if f == "normalized_key":
+                    continue
+                new_val = values[f]
+                if f in preserve_fields:
+                    old_val = existing_row.get(f)
+                    if old_val is not None and old_val != "" and old_val != "unknown" and old_val != "Inconnu":
+                        if new_val is None or new_val == "" or new_val == "unknown" or new_val == "Inconnu":
+                            continue
+                update_fields.append(f)
+
+            if not update_fields:
+                product_id = existing["id"]
+            else:
+                set_clause = ", ".join(f"{f} = %s" for f in update_fields)
+                set_clause += ", updated_at = NOW()"
+                params = [values[f] for f in update_fields] + [existing["id"]]
+                cur.execute(f"UPDATE products SET {set_clause} WHERE id = %s RETURNING id", params)
+                product_id = cur.fetchone()["id"]
         else:
             cols = ", ".join(fields)
             placeholders = ", ".join(["%s"] * len(fields))
@@ -1015,6 +1044,115 @@ def hide_review(review_id: int) -> bool:
         )
         conn.commit()
         return cur.rowcount > 0
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def get_data_quality_stats() -> dict:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT COUNT(*) FROM products")
+        total = cur.fetchone()[0]
+
+        checks = {
+            "no_protein": "SELECT COUNT(*) FROM products WHERE proteines_100g IS NULL OR proteines_100g = 0",
+            "no_score": "SELECT COUNT(*) FROM products WHERE score_final IS NULL",
+            "no_ingredients": "SELECT COUNT(*) FROM products WHERE ingredients IS NULL OR ingredients = '[]'",
+            "no_bcaa": "SELECT COUNT(*) FROM products WHERE bcaa_per_100g_prot IS NULL",
+            "no_amino": "SELECT COUNT(*) FROM products WHERE amino_profile IS NULL",
+            "no_kcal": "SELECT COUNT(*) FROM products WHERE kcal_per_100g IS NULL",
+            "no_image": "SELECT COUNT(*) FROM products WHERE image_url IS NULL OR image_url = ''",
+        }
+        results = {"total": total}
+        for key, q in checks.items():
+            cur.execute(q)
+            results[key] = cur.fetchone()[0]
+
+        results["complete"] = total - results["no_score"]
+        return results
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+_BAD_PRODUCT_NAME_PATTERNS = [
+    r"^.{0,3}$",
+    r"(?i)achat\s*/\s*vente",
+    r"(?i)^prot[ée]ines?\s*\|",
+    r"(?i)^whey\s+prot[ée]ine?\s*$",
+    r"(?i)nutrition\s+sportive\s*$",
+    r"(?i)^\s*accueil\s*$",
+    r"(?i)^\s*home\s*$",
+]
+
+def cleanup_catalog() -> dict:
+    import re as _re
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("""
+            SELECT p.id, p.name, p.brand, p.proteines_100g, p.ingredients, p.score_final
+            FROM products p
+            LEFT JOIN offers o ON p.id = o.product_id AND o.is_active = TRUE
+            GROUP BY p.id
+            HAVING COUNT(o.id) = 0
+               OR (p.proteines_100g IS NULL AND p.ingredients IS NULL AND p.score_final IS NULL)
+        """)
+        candidates = cur.fetchall()
+
+        removed_ids = []
+        removed_names = []
+
+        for row in candidates:
+            pid = row["id"]
+            name = row.get("name", "") or ""
+            prot = row.get("proteines_100g")
+            ingr = row.get("ingredients")
+            score = row.get("score_final")
+
+            is_bad_name = any(_re.search(p, name) for p in _BAD_PRODUCT_NAME_PATTERNS)
+            is_triple_miss = prot is None and (ingr is None or ingr == "[]") and score is None
+
+            if is_bad_name or is_triple_miss:
+                removed_ids.append(pid)
+                removed_names.append(name[:80])
+
+        if removed_ids:
+            placeholders = ", ".join(["%s"] * len(removed_ids))
+            cur.execute(f"DELETE FROM offers WHERE product_id IN ({placeholders})", removed_ids)
+            cur.execute(f"DELETE FROM reviews WHERE product_id IN ({placeholders})", removed_ids)
+            cur.execute(f"DELETE FROM products WHERE id IN ({placeholders})", removed_ids)
+            conn.commit()
+
+        return {
+            "removed_count": len(removed_ids),
+            "removed_names": removed_names,
+        }
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def get_incomplete_products_for_rescrape(limit: int = 50) -> list:
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("""
+            SELECT DISTINCT ON (p.id)
+                   p.id, p.name, p.brand, p.proteines_100g, p.ingredients, p.image_url, p.score_final,
+                   o.url AS offer_url, o.merchant
+            FROM products p
+            JOIN offers o ON p.id = o.product_id AND o.is_active = TRUE
+            WHERE (p.proteines_100g IS NULL OR p.proteines_100g = 0)
+               OR (p.ingredients IS NULL OR p.ingredients = '[]')
+               OR (p.image_url IS NULL OR p.image_url = '')
+               OR p.score_final IS NULL
+            ORDER BY p.id, o.confidence DESC
+            LIMIT %s
+        """, (limit,))
+        return [dict(r) for r in cur.fetchall()]
     finally:
         cur.close()
         release_connection(conn)

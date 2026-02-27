@@ -488,9 +488,13 @@ def extract_microdata(soup: BeautifulSoup) -> dict:
 
 
 _INGREDIENT_HEADING_PATTERNS = [
-    re.compile(r"ingr[ée]dients?", re.I),
-    re.compile(r"composition", re.I),
+    re.compile(r"ingr[ée]dients?\s+du\s+produit", re.I),
     re.compile(r"liste\s+des\s+ingr[ée]dients?", re.I),
+    re.compile(r"ingr[ée]dients?", re.I),
+    re.compile(r"composition\s+nutritionnelle", re.I),
+    re.compile(r"composition\s+du\s+produit", re.I),
+    re.compile(r"composition", re.I),
+    re.compile(r"what['']?s\s+in\s+it", re.I),
 ]
 
 _INGREDIENT_NOISE = re.compile(
@@ -583,7 +587,9 @@ def find_ingredients_block(text: str, soup=None) -> str | None:
     t = " ".join(text.split())
 
     patterns = [
+        re.compile(r"(?:liste\s+des\s+)?ingr[ée]dients?\s+du\s+produit\s*[:\-–]\s*(.{30,1200})", re.I),
         re.compile(r"(?:liste\s+des\s+)?ingr[ée]dients?\s*[:\-–]\s*(.{30,1200})", re.I),
+        re.compile(r"composition\s+(?:du\s+produit|nutritionnelle)\s*[:\-–]\s*(.{30,1200})", re.I),
         re.compile(r"composition\s*[:\-–]\s*(.{30,1200})", re.I),
     ]
     for pat in patterns:
@@ -999,6 +1005,68 @@ def extract_weight_comprehensive(soup: BeautifulSoup, name: str, jsonld: dict | 
     return None
 
 
+_IMAGE_EXCLUDE_PATTERNS = [
+    "favicon", "logo", "icon", "sprite", "placeholder", "loading",
+    "banner", "badge", "flag", "payment", "social", "arrow", "close",
+    "1x1", "pixel", "spacer", "blank", "tracking",
+]
+
+def _extract_product_image_fallback(soup) -> str:
+    meta_img = soup.find("meta", {"property": "product:image"})
+    if meta_img and meta_img.get("content"):
+        return meta_img["content"]
+    link_img = soup.find("link", {"rel": "image_src"})
+    if link_img and link_img.get("href"):
+        return link_img["href"]
+
+    selectors = [
+        "[data-product-image] img",
+        ".product-image img",
+        ".product-gallery img",
+        ".product-photo img",
+        ".product__media img",
+        ".product-single__photo img",
+        "[class*='product'] [class*='image'] img",
+        "[class*='product'] [class*='gallery'] img",
+        ".woocommerce-product-gallery img",
+        "[itemprop='image']",
+    ]
+    for sel in selectors:
+        imgs = soup.select(sel)
+        for img in imgs:
+            src = img.get("src") or img.get("data-src") or img.get("data-lazy-src") or ""
+            if not src:
+                continue
+            src_lower = src.lower()
+            if any(p in src_lower for p in _IMAGE_EXCLUDE_PATTERNS):
+                continue
+            if src.endswith(".svg") or "data:image" in src:
+                continue
+            return src
+
+    main_content = soup.find("main") or soup.find("div", {"id": re.compile(r"product|content", re.I)}) or soup
+    imgs = main_content.find_all("img", src=True, limit=20)
+    for img in imgs:
+        src = img.get("src", "")
+        src_lower = src.lower()
+        if any(p in src_lower for p in _IMAGE_EXCLUDE_PATTERNS):
+            continue
+        if src.endswith(".svg") or "data:image" in src:
+            continue
+        width = img.get("width", "")
+        height = img.get("height", "")
+        try:
+            w = int(width) if width else 999
+            h = int(height) if height else 999
+        except (ValueError, TypeError):
+            w, h = 999, 999
+        if w < 80 or h < 80:
+            continue
+        return src
+
+    return ""
+
+
 def extract_product_data(url: str) -> dict | None:
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -1061,6 +1129,8 @@ def extract_product_data(url: str) -> dict | None:
             brand = extract_brand_from_text(name, url)
         if not image_url:
             image_url = og.get("og:image", "") or microdata.get("image", "")
+        if not image_url:
+            image_url = _extract_product_image_fallback(soup)
         if image_url and not image_url.startswith("http"):
             from urllib.parse import urljoin
             image_url = urljoin(url, image_url)
@@ -1808,6 +1878,8 @@ def refresh_offer_price(url: str) -> dict | None:
         if not image_url:
             og = extract_og_meta(soup)
             image_url = og.get("og:image", "")
+        if not image_url:
+            image_url = _extract_product_image_fallback(soup)
         if image_url and not image_url.startswith("http"):
             from urllib.parse import urljoin
             image_url = urljoin(url, image_url)

@@ -18,6 +18,7 @@ from db import (
     get_product_by_id, get_product_offers, get_products_by_ids,
     create_review, get_reviews_for_product, get_average_rating,
     flag_review, hide_review, get_flagged_reviews,
+    get_data_quality_stats, cleanup_catalog, get_incomplete_products_for_rescrape,
 )
 from auth import hash_password, verify_password
 from page_validator import validate_url_debug, is_whey_product_page
@@ -2970,6 +2971,105 @@ def page_admin():
         st.metric("Confiance moy.", f"{stats['avg_confidence']:.0%}")
     with col4:
         st.metric("A revoir", stats["products_needing_review"])
+
+    st.markdown("")
+
+    dq = get_data_quality_stats()
+    st.markdown("<div class='admin-section'><div class='admin-section-title'>Qualite des donnees</div><div class='admin-section-desc'>Etat de completude du catalogue.</div>", unsafe_allow_html=True)
+    dq_total = dq["total"]
+    if dq_total > 0:
+        dq_c1, dq_c2, dq_c3, dq_c4, dq_c5 = st.columns(5)
+        with dq_c1:
+            pct_complete = dq["complete"] * 100 // dq_total
+            st.metric("Complets", f"{dq['complete']}/{dq_total}", f"{pct_complete}%")
+        with dq_c2:
+            st.metric("Sans proteines", dq["no_protein"])
+        with dq_c3:
+            st.metric("Sans ingredients", dq["no_ingredients"])
+        with dq_c4:
+            st.metric("Sans image", dq["no_image"])
+        with dq_c5:
+            st.metric("Sans score", dq["no_score"])
+
+        if dq["no_score"] > 0 or dq["no_protein"] > 0:
+            with st.expander("Produits incomplets"):
+                incomplete = get_incomplete_products_for_rescrape(limit=20)
+                if incomplete:
+                    inc_data = []
+                    for p in incomplete:
+                        missing = []
+                        if not p.get("proteines_100g"):
+                            missing.append("prot")
+                        if not p.get("ingredients") or p.get("ingredients") == "[]":
+                            missing.append("ingr")
+                        if not p.get("image_url"):
+                            missing.append("img")
+                        if p.get("score_final") is None:
+                            missing.append("score")
+                        inc_data.append({
+                            "Produit": (p.get("name") or "")[:50],
+                            "Marque": p.get("brand", ""),
+                            "Marchand": p.get("merchant", ""),
+                            "Manquant": ", ".join(missing),
+                        })
+                    st.dataframe(pd.DataFrame(inc_data), use_container_width=True, hide_index=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("")
+
+    cleanup_col, rescrape_col = st.columns(2)
+    with cleanup_col:
+        st.markdown("<div class='admin-section'><div class='admin-section-title'>Nettoyage catalogue</div><div class='admin-section-desc'>Supprime les entrees invalides (pages categorie, marques sans donnees).</div>", unsafe_allow_html=True)
+        if st.button("Nettoyer le catalogue", key="btn_cleanup", type="primary"):
+            with st.spinner("Nettoyage en cours..."):
+                result = cleanup_catalog()
+            if result["removed_count"] > 0:
+                st.success(f"{result['removed_count']} entrees supprimees.")
+                with st.expander("Details"):
+                    for n in result["removed_names"]:
+                        st.text(f"- {n}")
+                cached_get_all_products.clear()
+                cached_get_catalog_stats.clear()
+            else:
+                st.info("Aucune entree a nettoyer.")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with rescrape_col:
+        st.markdown("<div class='admin-section'><div class='admin-section-title'>Re-scrape incomplets</div><div class='admin-section-desc'>Re-scrape les produits avec donnees manquantes (proteines, ingredients, images).</div>", unsafe_allow_html=True)
+        rescrape_limit = st.number_input("Nombre de produits", min_value=1, max_value=100, value=20, key="rescrape_limit")
+        if st.button("Lancer le re-scrape", key="btn_rescrape", type="primary"):
+            incomplete_products = get_incomplete_products_for_rescrape(limit=rescrape_limit)
+            if not incomplete_products:
+                st.info("Tous les produits ont des donnees completes.")
+            else:
+                progress_rs = st.progress(0)
+                status_rs = st.empty()
+                detail_rs = st.empty()
+                updated = 0
+                errors = 0
+                for i, prod in enumerate(incomplete_products):
+                    progress_rs.progress((i + 1) / len(incomplete_products))
+                    detail_rs.text(f"Re-scrape: {prod.get('name', '')[:50]}...")
+                    try:
+                        from scraper import extract_product_data, split_product_offer, compute_confidence_v2
+                        from db import upsert_product, upsert_offer
+                        result = extract_product_data(prod["offer_url"])
+                        if result:
+                            conf = compute_confidence_v2(result, has_jsonld=bool(result.get("_has_jsonld")), needs_js_render=result.get("_needs_js_render", False))
+                            if conf >= 0.2:
+                                product_data, offer_data = split_product_offer(result)
+                                upsert_product(product_data)
+                                updated += 1
+                    except Exception as e:
+                        errors += 1
+                    import time
+                    time.sleep(1)
+                progress_rs.empty()
+                detail_rs.empty()
+                status_rs.success(f"Re-scrape termine: {updated} mis a jour, {errors} erreurs.")
+                cached_get_all_products.clear()
+                cached_get_catalog_stats.clear()
+        st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("")
 

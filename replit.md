@@ -75,3 +75,11 @@ The user prefers clear, concise communication. They value iterative development 
 - **Discovery Pipeline**: Brave Search → scrape → validate → score → upsert products/offers
 - **Refresh Pipeline**: Re-scrape active offers for price/availability updates
 - **Re-analysis Pipeline**: Re-scrape existing products to populate extended nutrition fields (aminogram, macros) using multi_source_extractor. Targets products where amino_profile IS NULL or kcal_per_100g IS NULL.
+- **Data Quality Dashboard**: Admin section showing catalog completeness (protein, ingredients, score, image, BCAA coverage) with breakdown by missing field and list of incomplete products.
+- **Catalog Cleanup**: Removes non-product entries (category pages, brand homepages, entries with no protein + no ingredients + no score). Uses `_BAD_PRODUCT_NAME_PATTERNS` regex list.
+- **Re-scrape Incomplets**: Pipeline that re-scrapes products with missing data (protein, ingredients, images) using improved extraction logic.
+
+## Data Quality Architecture
+- **Smart Upsert (`upsert_product`)**: When updating existing products, fields in the `preserve_fields` set are never overwritten with None/empty values. This prevents re-scrapes from erasing previously extracted data.
+- **Image Extraction Fallbacks**: `_extract_product_image_fallback()` checks: product:image meta → image_src link → CSS selectors (.product-image, .product-gallery, etc.) → itemprop=image → main content large images (>80px).
+- **Ingredients Extraction**: `find_ingredients_block_html()` searches expanded heading patterns (7 patterns incl. "du produit", "nutritionnelle", "what's in it"), then class-based search, then itemprop. Text fallback uses 4 regex patterns.
