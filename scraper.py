@@ -160,12 +160,14 @@ SWEETENERS = {
     "aspartame": ["aspartame", "e951"],
 }
 
-WHEY_TYPES = {
-    "hydrolysate": ["hydrolys", "hydrolyzed", "hydrolysee", "hydrolysée", "hydrolysat"],
-    "isolate": ["isolate", "isolat"],
-    "native": ["native", "whey native"],
-    "concentrate": ["concentrate", "concentre", "concentré"],
-}
+WHEY_TYPES_NAME_PRIORITY = [
+    ("native", ["whey native", "native whey", "native"]),
+    ("hydrolysate", ["hydrolys", "hydrolyzed", "hydrolysee", "hydrolysée", "hydrolysat"]),
+    ("isolate", ["isolat", "isolate", "iso whey", "whey iso"]),
+    ("concentrate", ["concentrate", "concentre", "concentré", "concentrat"]),
+]
+
+WHEY_TYPES = {k: v for k, v in WHEY_TYPES_NAME_PRIORITY}
 
 ORIGIN_FR_PATTERNS = [
     r"fabriqu[ée]e?\s+en\s+france",
@@ -612,11 +614,31 @@ def detect_sweeteners(text: str) -> dict:
     return out
 
 
-def detect_whey_type(text: str) -> str:
+def detect_whey_type(text: str, product_name: str = "") -> str:
+    name_lower = (product_name or "").lower()
+    whey_context = any(kw in name_lower for kw in ["whey", "protéine", "proteine", "protein", "poudre", "isolat", "lactosérum", "lactoserum"])
+    if name_lower and whey_context:
+        for wtype, variants in WHEY_TYPES_NAME_PRIORITY:
+            if any(v in name_lower for v in variants):
+                return wtype
+
     t = (text or "").lower()
-    for wtype, variants in WHEY_TYPES.items():
-        if any(v in t for v in variants):
-            return wtype
+    if not name_lower:
+        for wtype, variants in WHEY_TYPES_NAME_PRIORITY:
+            if any(v in t for v in variants):
+                return wtype
+    else:
+        for wtype, variants in WHEY_TYPES_NAME_PRIORITY:
+            count = sum(1 for v in variants if v in t)
+            if count >= 2:
+                return wtype
+            if count == 1:
+                for v in variants:
+                    if v in t:
+                        idx = t.find(v)
+                        context = t[max(0, idx - 30):idx + len(v) + 30]
+                        if any(kw in context for kw in ["whey", "protéine", "proteine", "protein", "poudre"]):
+                            return wtype
     return "unknown"
 
 
@@ -1201,7 +1223,7 @@ def extract_product_data(url: str) -> dict | None:
             protein_ev = [e for e in raw_evidence if e.get("field") == "protein_per_100g"]
             if protein_ev:
                 protein_confidence = max(e.get("confidence", 0) for e in protein_ev)
-            if protein_per_100g >= 96 or protein_per_100g < 40:
+            if protein_per_100g >= 96 or protein_per_100g < 15:
                 protein_suspect = True
         else:
             from nutrition_extractor import extract_protein_per_100g as _extract_protein, extract_protein_from_jsonld
@@ -1246,7 +1268,7 @@ def extract_product_data(url: str) -> dict | None:
         all_text = (name + " " + (jsonld.get("description", "") if jsonld else "") + " " + page_full_text[:3000]).lower()
 
         sweeteners = detect_sweeteners(analysis_text)
-        whey_type = detect_whey_type(name + " " + all_text[:2000])
+        whey_type = detect_whey_type(all_text[:2000], product_name=name)
         made_in_france = detect_made_in_france(page_full_text)
         origin = extract_origin_label(page_full_text, made_in_france)
         has_aminogram = detect_aminogram(page_full_text) or len(amino_profile) >= 6

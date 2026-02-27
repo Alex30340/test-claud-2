@@ -36,7 +36,7 @@ The user prefers clear, concise communication. They value iterative development 
     -   **Health Score (35%)**: Starts at 10, with deductions for artificial sweeteners, flavors, thickeners, colorants, and high ingredient count.
     -   **Price Score (15%)**: Stepwise scoring based on price per kilogram.
     -   **Final Score**: Weighted average of the three main scores, with optional premium bonuses (e.g., high protein content, full aminogram, French origin).
-- **Product Detection**: Automated identification of whey type (Native, Isolate, Hydrolysate, Concentrate), French manufacturing, origin, and presence of specific additives (sweeteners, flavors, thickeners, colorants).
+- **Product Detection**: Automated identification of whey type (Native, Isolate, Hydrolysate, Concentrate), French manufacturing, origin, and presence of specific additives (sweeteners, flavors, thickeners, colorants). Whey type detection prioritizes product name (with whey/protein context check) over page text; page text fallback requires 2+ keyword hits or contextual proximity to whey-related terms to avoid false positives. Protein validation threshold: values <15g/100g rejected, >=96g rejected as suspect. Per-serving values (typically 15-35g) are filtered out.
 - **Multi-Source Nutrition Extraction** (integrated in scraper.py):
     - Source A: Structured data (JSON-LD nutrition, additionalProperty) → confidence 0.85-0.9
     - Source B: HTML tables and div sections → confidence 0.65-0.9

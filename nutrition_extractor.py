@@ -137,7 +137,7 @@ def extract_nutrition_table(html) -> dict:
                 for i in range(1, len(cells)):
                     cell_text = cells[i].get_text(strip=True)
                     val = _parse_float(cell_text)
-                    if val and 40 <= val <= 95:
+                    if val and 15 <= val <= 95:
                         result["protein_per_100g"] = val
                         result["source"] = "table_inferred"
                         break
@@ -206,7 +206,7 @@ def extract_serving_info(html) -> dict:
     if result["serving_size_g"] and result["protein_per_serving_g"]:
         calc = (result["protein_per_serving_g"] / result["serving_size_g"]) * 100
         calc = round(calc, 1)
-        if 40 <= calc <= 95:
+        if 15 <= calc <= 95:
             result["calculated_protein_per_100g"] = calc
             logger.debug(
                 f"[NUTRITION] Serving calc: {result['protein_per_serving_g']}g / "
@@ -224,7 +224,7 @@ def validate_protein_value(val: float | None) -> tuple[float | None, bool]:
         logger.warning(f"[NUTRITION] Suspect protein value: {val}g/100g => rejected")
         return None, True
 
-    if val < 40:
+    if val < 15:
         logger.warning(f"[NUTRITION] Too low protein value for whey: {val}g/100g => rejected")
         return None, False
 
