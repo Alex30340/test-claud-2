@@ -2,11 +2,43 @@ import os
 import re
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
 from datetime import datetime
+
+_connection_pool = None
+
+
+def _get_pool():
+    global _connection_pool
+    if _connection_pool is None or _connection_pool.closed:
+        _connection_pool = psycopg2.pool.ThreadedConnectionPool(
+            minconn=2, maxconn=10,
+            dsn=os.environ["DATABASE_URL"],
+        )
+    return _connection_pool
 
 
 def get_connection():
-    return psycopg2.connect(os.environ["DATABASE_URL"])
+    try:
+        pool = _get_pool()
+        conn = pool.getconn()
+        conn.autocommit = False
+        return conn
+    except Exception:
+        return psycopg2.connect(os.environ["DATABASE_URL"])
+
+
+def release_connection(conn):
+    try:
+        if not conn.closed:
+            conn.rollback()
+        pool = _get_pool()
+        pool.putconn(conn)
+    except Exception:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def init_db():
@@ -134,6 +166,14 @@ def init_db():
             is_hidden BOOLEAN DEFAULT FALSE,
             created_at TIMESTAMP NOT NULL DEFAULT NOW()
         );
+
+        CREATE INDEX IF NOT EXISTS idx_offers_product_id ON offers(product_id);
+        CREATE INDEX IF NOT EXISTS idx_offers_active ON offers(product_id, confidence DESC, updated_at DESC) WHERE is_active = TRUE;
+        CREATE INDEX IF NOT EXISTS idx_reviews_product_id ON reviews(product_id);
+        CREATE INDEX IF NOT EXISTS idx_reviews_user_id ON reviews(user_id);
+        CREATE INDEX IF NOT EXISTS idx_scans_user_id ON scans(user_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_scan_items_scan_id ON scan_items(scan_id);
+        CREATE INDEX IF NOT EXISTS idx_products_score ON products(score_final DESC NULLS LAST);
     """)
     conn.commit()
 
@@ -210,7 +250,7 @@ def init_db():
             conn.rollback()
 
     cur.close()
-    conn.close()
+    release_connection(conn)
 
 
 def create_user(email: str, password_hash: str, display_name: str) -> dict | None:
@@ -229,17 +269,19 @@ def create_user(email: str, password_hash: str, display_name: str) -> dict | Non
         return None
     finally:
         cur.close()
-        conn.close()
+        release_connection(conn)
 
 
 def get_user_by_email(email: str) -> dict | None:
     conn = get_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT * FROM users WHERE email = %s", (email.lower().strip(),))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-    return dict(row) if row else None
+    try:
+        cur.execute("SELECT * FROM users WHERE email = %s", (email.lower().strip(),))
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        cur.close()
+        release_connection(conn)
 
 
 def check_and_reset_monthly_usage(user_id: int) -> int:
@@ -249,7 +291,7 @@ def check_and_reset_monthly_usage(user_id: int) -> int:
     row = cur.fetchone()
     if not row:
         cur.close()
-        conn.close()
+        release_connection(conn)
         return 0
 
     today = datetime.now().date()
@@ -264,21 +306,23 @@ def check_and_reset_monthly_usage(user_id: int) -> int:
         )
         conn.commit()
         cur.close()
-        conn.close()
+        release_connection(conn)
         return 0
 
     cur.close()
-    conn.close()
+    release_connection(conn)
     return row["scans_this_month"]
 
 
 def increment_scan_count(user_id: int):
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("UPDATE users SET scans_this_month = scans_this_month + 1 WHERE id = %s", (user_id,))
-    conn.commit()
-    cur.close()
-    conn.close()
+    try:
+        cur.execute("UPDATE users SET scans_this_month = scans_this_month + 1 WHERE id = %s", (user_id,))
+        conn.commit()
+    finally:
+        cur.close()
+        release_connection(conn)
 
 
 def get_scan_limit(plan: str) -> int | None:
@@ -348,37 +392,39 @@ def save_scan(user_id: int, products: list[dict]) -> int:
 
     conn.commit()
     cur.close()
-    conn.close()
+    release_connection(conn)
     return scan_id
 
 
 def get_user_scans(user_id: int, limit: int = 20) -> list[dict]:
     conn = get_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute(
-        "SELECT id, created_at, product_count, status FROM scans WHERE user_id = %s ORDER BY created_at DESC LIMIT %s",
-        (user_id, limit),
-    )
-    rows = [dict(r) for r in cur.fetchall()]
-    cur.close()
-    conn.close()
-    return rows
+    try:
+        cur.execute(
+            "SELECT id, created_at, product_count, status FROM scans WHERE user_id = %s ORDER BY created_at DESC LIMIT %s",
+            (user_id, limit),
+        )
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        release_connection(conn)
 
 
 def get_scan_items(scan_id: int, user_id: int) -> list[dict]:
     conn = get_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute(
-        """SELECT si.* FROM scan_items si
-           JOIN scans s ON si.scan_id = s.id
-           WHERE si.scan_id = %s AND s.user_id = %s
-           ORDER BY si.score_global DESC NULLS LAST""",
-        (scan_id, user_id),
-    )
-    rows = [dict(r) for r in cur.fetchall()]
-    cur.close()
-    conn.close()
-    return rows
+    try:
+        cur.execute(
+            """SELECT si.* FROM scan_items si
+               JOIN scans s ON si.scan_id = s.id
+               WHERE si.scan_id = %s AND s.user_id = %s
+               ORDER BY si.score_global DESC NULLS LAST""",
+            (scan_id, user_id),
+        )
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        release_connection(conn)
 
 
 def can_user_scan(user_id: int, plan: str) -> bool:
@@ -504,7 +550,7 @@ def upsert_product(product_data: dict) -> int:
         return product_id
     finally:
         cur.close()
-        conn.close()
+        release_connection(conn)
 
 
 def upsert_offer(product_id: int, offer_data: dict) -> int:
@@ -557,7 +603,7 @@ def upsert_offer(product_id: int, offer_data: dict) -> int:
         return offer_id
     finally:
         cur.close()
-        conn.close()
+        release_connection(conn)
 
 
 def get_all_products(min_confidence: float = 0.0, limit: int = 200) -> list[dict]:
@@ -578,7 +624,16 @@ def get_all_products(min_confidence: float = 0.0, limit: int = 200) -> list[dict
                 WHERE is_active = TRUE
                 ORDER BY product_id, confidence DESC, updated_at DESC
             )
-            SELECT p.*, bo.offer_prix, bo.offer_prix_par_kg, bo.offer_url,
+            SELECT p.id, p.name, p.brand, p.normalized_key, p.type_whey,
+                   p.proteines_100g, p.bcaa_per_100g_prot, p.leucine_g,
+                   p.isoleucine_g, p.valine_g, p.has_aminogram, p.mentions_bcaa,
+                   p.ingredient_count, p.has_sucralose, p.has_acesulfame_k,
+                   p.has_aspartame, p.has_artificial_flavors, p.has_thickeners,
+                   p.has_colorants, p.origin_label, p.origin_confidence,
+                   p.made_in_france, p.profil_suspect,
+                   p.score_proteique, p.score_sante, p.score_global, p.score_final,
+                   p.image_url, p.needs_review, p.created_at, p.updated_at,
+                   bo.offer_prix, bo.offer_prix_par_kg, bo.offer_url,
                    bo.offer_merchant, bo.offer_confidence, bo.offer_poids_kg
             FROM products p
             LEFT JOIN best_offers bo ON p.id = bo.product_id
@@ -591,7 +646,7 @@ def get_all_products(min_confidence: float = 0.0, limit: int = 200) -> list[dict
         return rows
     finally:
         cur.close()
-        conn.close()
+        release_connection(conn)
 
 
 def get_product_offers(product_id: int) -> list[dict]:
@@ -606,7 +661,7 @@ def get_product_offers(product_id: int) -> list[dict]:
         return rows
     finally:
         cur.close()
-        conn.close()
+        release_connection(conn)
 
 
 def get_active_offers(min_confidence: float = 0.3) -> list[dict]:
@@ -624,7 +679,7 @@ def get_active_offers(min_confidence: float = 0.3) -> list[dict]:
         return rows
     finally:
         cur.close()
-        conn.close()
+        release_connection(conn)
 
 
 def update_offer_price(offer_id: int, prix: float | None, prix_par_kg: float | None,
@@ -642,7 +697,7 @@ def update_offer_price(offer_id: int, prix: float | None, prix_par_kg: float | N
         conn.commit()
     finally:
         cur.close()
-        conn.close()
+        release_connection(conn)
 
 
 def mark_offer_failed(offer_id: int):
@@ -660,7 +715,7 @@ def mark_offer_failed(offer_id: int):
         conn.commit()
     finally:
         cur.close()
-        conn.close()
+        release_connection(conn)
 
 
 def create_pipeline_run(run_type: str) -> int:
@@ -676,7 +731,7 @@ def create_pipeline_run(run_type: str) -> int:
         return run_id
     finally:
         cur.close()
-        conn.close()
+        release_connection(conn)
 
 
 def update_pipeline_run(run_id: int, status: str, products_found: int = 0,
@@ -694,7 +749,7 @@ def update_pipeline_run(run_id: int, status: str, products_found: int = 0,
         conn.commit()
     finally:
         cur.close()
-        conn.close()
+        release_connection(conn)
 
 
 def get_pipeline_runs(limit: int = 10) -> list[dict]:
@@ -709,7 +764,7 @@ def get_pipeline_runs(limit: int = 10) -> list[dict]:
         return rows
     finally:
         cur.close()
-        conn.close()
+        release_connection(conn)
 
 
 def get_catalog_stats() -> dict:
@@ -751,7 +806,7 @@ def get_catalog_stats() -> dict:
         }
     finally:
         cur.close()
-        conn.close()
+        release_connection(conn)
 
 
 # ---------------------------------------------------------------------------
@@ -767,7 +822,7 @@ def get_product_by_id(product_id: int) -> dict | None:
         return dict(row) if row else None
     finally:
         cur.close()
-        conn.close()
+        release_connection(conn)
 
 
 def create_review(product_id: int, user_id: int, rating: int, title: str = "",
@@ -789,7 +844,7 @@ def create_review(product_id: int, user_id: int, rating: int, title: str = "",
         return None
     finally:
         cur.close()
-        conn.close()
+        release_connection(conn)
 
 
 def get_reviews_for_product(product_id: int, include_hidden: bool = False) -> list[dict]:
@@ -818,7 +873,7 @@ def get_reviews_for_product(product_id: int, include_hidden: bool = False) -> li
         return rows
     finally:
         cur.close()
-        conn.close()
+        release_connection(conn)
 
 
 def get_average_rating(product_id: int) -> dict:
@@ -838,7 +893,7 @@ def get_average_rating(product_id: int) -> dict:
         }
     finally:
         cur.close()
-        conn.close()
+        release_connection(conn)
 
 
 def flag_review(review_id: int) -> bool:
@@ -853,7 +908,7 @@ def flag_review(review_id: int) -> bool:
         return cur.rowcount > 0
     finally:
         cur.close()
-        conn.close()
+        release_connection(conn)
 
 
 def update_product_image(product_id: int, image_url: str):
@@ -867,7 +922,7 @@ def update_product_image(product_id: int, image_url: str):
         conn.commit()
     finally:
         cur.close()
-        conn.close()
+        release_connection(conn)
 
 
 def get_flagged_reviews(limit: int = 50) -> list[dict]:
@@ -888,7 +943,7 @@ def get_flagged_reviews(limit: int = 50) -> list[dict]:
         return rows
     finally:
         cur.close()
-        conn.close()
+        release_connection(conn)
 
 
 def get_products_by_ids(product_ids: list[int]) -> list[dict]:
@@ -923,7 +978,7 @@ def get_products_by_ids(product_ids: list[int]) -> list[dict]:
         return rows
     finally:
         cur.close()
-        conn.close()
+        release_connection(conn)
 
 
 def hide_review(review_id: int) -> bool:
@@ -938,4 +993,4 @@ def hide_review(review_id: int) -> bool:
         return cur.rowcount > 0
     finally:
         cur.close()
-        conn.close()
+        release_connection(conn)

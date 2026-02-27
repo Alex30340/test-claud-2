@@ -51,6 +51,11 @@ The user prefers clear, concise communication. They value iterative development 
 - **Aminogram Extraction**: Full 18 amino acid profile (Leucine, Isoleucine, Valine, Glutamine, Arginine, Lysine, Methionine, Phenylalanine, Threonine, Tryptophan, Histidine, Alanine, Glycine, Proline, Serine, Tyrosine, Aspartic acid, Cysteine) with base detection (per_100g_protein/per_100g/per_serving).
 - **JavaScript Render Detection**: Identifies pages requiring JavaScript rendering and adjusts confidence scores accordingly.
 - **Performance**: Utilizes `ThreadPoolExecutor` for parallel extraction and includes delays/timeouts for external API calls and HTTP requests.
+- **Database Performance**:
+    - Connection pooling via `psycopg2.pool.ThreadedConnectionPool` (2-10 connections). Use `get_connection()` / `release_connection(conn)` pattern.
+    - 7 database indexes on frequently queried columns (offers.product_id, reviews.product_id, products.score_final, etc.)
+    - Streamlit `@st.cache_data` wrappers (TTL 30-60s) for catalog, product, offers, reviews queries — prefixed `cached_*`
+    - Catalog query selects only needed columns (excludes amino_profile, raw_evidence, ingredients JSONB)
 
 ## External Dependencies
 -   `streamlit`: Main framework for the web application UI.

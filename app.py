@@ -25,6 +25,42 @@ from resolver import resolve_url_debug
 
 init_db()
 
+
+@st.cache_data(ttl=60)
+def cached_get_all_products(min_confidence=0.0, limit=200):
+    return get_all_products(min_confidence=min_confidence, limit=limit)
+
+
+@st.cache_data(ttl=30)
+def cached_get_product_by_id(product_id):
+    return get_product_by_id(product_id)
+
+
+@st.cache_data(ttl=30)
+def cached_get_product_offers(product_id):
+    return get_product_offers(product_id)
+
+
+@st.cache_data(ttl=30)
+def cached_get_reviews(product_id):
+    return get_reviews_for_product(product_id)
+
+
+@st.cache_data(ttl=30)
+def cached_get_average_rating(product_id):
+    return get_average_rating(product_id)
+
+
+@st.cache_data(ttl=60)
+def cached_get_catalog_stats():
+    return get_catalog_stats()
+
+
+@st.cache_data(ttl=30)
+def cached_get_products_by_ids(product_ids):
+    return get_products_by_ids(product_ids)
+
+
 def get_logo_base64():
     logo_path = os.path.join(os.path.dirname(__file__), "static", "logo.png")
     if os.path.exists(logo_path):
@@ -2434,7 +2470,7 @@ def page_catalogue():
 
     render_page_header("Catalogue de produits")
 
-    stats = get_catalog_stats()
+    stats = cached_get_catalog_stats()
 
     col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
@@ -2468,7 +2504,7 @@ def page_catalogue():
         help="Les produits avec confidence < 0.75 sont masques par defaut (ex: pages JS sans prix).",
     )
 
-    products = get_all_products(min_confidence=min_confidence, limit=200)
+    products = cached_get_all_products(min_confidence=min_confidence, limit=200)
 
     if not products:
         st.info("Aucun produit dans le catalogue. Lancez un Discovery depuis la page Admin pour alimenter le catalogue.")
@@ -2493,7 +2529,7 @@ def page_compare():
             st.rerun()
         return
 
-    products = get_products_by_ids(compare_ids)
+    products = cached_get_products_by_ids(tuple(compare_ids))
     if not products:
         st.warning("Les produits selectionnes n'ont pas ete trouves.")
         st.session_state.compare_list = []
@@ -2591,7 +2627,7 @@ def page_product():
             st.rerun()
         return
 
-    product = get_product_by_id(product_id)
+    product = cached_get_product_by_id(product_id)
     if not product:
         st.error("Produit introuvable.")
         if st.button("Retour au catalogue"):
@@ -2682,7 +2718,7 @@ def page_product():
         st.metric("Note sante", f"{s_sante:.1f}/10" if is_valid(s_sante) else "N/D")
     with col3:
         price_score = calculate_price_score_10(None)
-        offers = get_product_offers(product_id)
+        offers = cached_get_product_offers(product_id)
         if offers:
             best = offers[0]
             price_score = calculate_price_score_10(best.get("prix_par_kg"))
@@ -2756,7 +2792,7 @@ def page_product():
 
     with offers_col:
         st.subheader("Offres disponibles")
-        offers = get_product_offers(product_id)
+        offers = cached_get_product_offers(product_id)
         if not offers:
             st.info("Aucune offre active pour ce produit.")
         else:
@@ -2792,7 +2828,7 @@ def page_product():
 
     st.subheader("Avis de la communaute")
 
-    rating_data = get_average_rating(product_id)
+    rating_data = cached_get_average_rating(product_id)
     avg_r = rating_data["average"]
     count_r = rating_data["count"]
 
@@ -2831,11 +2867,13 @@ def page_product():
                     )
                     if result:
                         st.success("Avis publie !")
+                        cached_get_reviews.clear()
+                        cached_get_average_rating.clear()
                         st.rerun()
                     else:
                         st.error("Erreur lors de la publication.")
 
-    reviews = get_reviews_for_product(product_id)
+    reviews = cached_get_reviews(product_id)
     if reviews:
         sort_reviews = st.selectbox("Trier par", ["Plus recents", "Les mieux notes"], key="review_sort")
         if sort_reviews == "Les mieux notes":
@@ -2879,7 +2917,7 @@ def page_admin():
 
     render_page_header("Administration")
 
-    stats = get_catalog_stats()
+    stats = cached_get_catalog_stats()
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Produits", stats["total_products"])
