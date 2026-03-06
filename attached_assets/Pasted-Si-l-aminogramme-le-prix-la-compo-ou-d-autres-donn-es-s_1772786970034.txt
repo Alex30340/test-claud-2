@@ -1,0 +1,337 @@
+Si l’aminogramme, le prix, la compo ou d’autres données sont presque toujours présentes soit :
+
+dans une image,
+
+dans un accordéon,
+
+dans un onglet déroulant,
+
+dans une variante,
+
+ou après interaction,
+
+alors il faut passer d’une logique “je scrape le texte de la page” à une logique “je reproduis le parcours utilisateur avant extraction”.
+
+Ce que ça veut dire concrètement
+
+Quand toi tu vas sur une fiche produit, tu fais souvent sans t’en rendre compte :
+
+tu attends que la page finisse de charger,
+
+tu fermes le pop-up cookies,
+
+tu choisis parfois un goût ou un format,
+
+tu ouvres “Valeurs nutritionnelles”,
+
+tu ouvres “Ingrédients”,
+
+tu zoomes l’image ou tu regardes une autre photo,
+
+tu lis la table ou l’étiquette.
+
+Ton logiciel, lui, très souvent :
+
+récupère juste le HTML initial,
+
+ne clique sur rien,
+
+ne déroule rien,
+
+ne change pas de variante,
+
+ne lit pas toujours les images secondaires,
+
+ne cible pas la bonne zone de texte.
+
+Donc il passe à côté d’infos pourtant visibles.
+
+La meilleure méthode pour toi
+
+Dans ton cas, la meilleure approche n’est pas seulement “meilleur OCR” ou “meilleur scraping”, c’est :
+
+scraping interactif + extraction ciblée + OCR ciblé
+
+Autrement dit :
+
+charger la page complètement
+
+simuler les interactions utiles
+
+ouvrir tous les blocs déroulants
+
+récupérer les images produit
+
+faire l’OCR uniquement sur les bonnes images
+
+fusionner les données trouvées
+
+Ce qu’il faut améliorer exactement
+1. Ne plus scraper seulement le HTML brut
+
+Il faut scraper le DOM après rendu.
+
+Beaucoup de sites chargent :
+
+le prix après JS,
+
+la composition dans un bloc masqué,
+
+l’aminogramme dans un tab,
+
+certaines images après scroll.
+
+Donc si tu lis seulement le code source initial, tu rates une partie de la fiche.
+
+2. Ouvrir automatiquement tous les accordéons / onglets
+
+C’est probablement l’un des plus gros manques actuellement.
+
+Ton bot doit essayer automatiquement :
+
+tous les boutons “voir plus”
+
+tous les onglets “composition”, “ingrédients”, “nutrition”, “valeurs nutritionnelles”, “aminogramme”, “analyse nutritionnelle”, “détails”, etc.
+
+tous les éléments déroulants
+
+Ensuite seulement il extrait le texte.
+
+Très souvent, l’info est bien là, mais non visible tant qu’on ne clique pas.
+
+3. Gérer les variantes produit
+
+Sur certains sites :
+
+le prix change selon le format,
+
+l’image change selon le parfum,
+
+les valeurs changent selon la saveur ou la version,
+
+la bonne image aminogramme apparaît après sélection.
+
+Donc ton scraper doit tester :
+
+la variante sélectionnée par défaut,
+
+les autres variantes si besoin,
+
+puis relire les données affichées après chaque changement.
+
+4. Récupérer toutes les images, pas seulement l’image principale
+
+Souvent :
+
+image 1 = packshot
+
+image 2 = tableau nutritionnel
+
+image 3 = aminogramme
+
+image 4 = ingrédients
+
+image 5 = arguments marketing
+
+Si tu fais l’OCR seulement sur l’image principale, tu loupes souvent l’essentiel.
+
+Il faut donc :
+
+extraire toutes les images du carrousel,
+
+les classer,
+
+détecter lesquelles contiennent du texte dense,
+
+lancer l’OCR surtout sur celles-là.
+
+5. Faire un OCR ciblé, pas un OCR global
+
+Le problème de l’OCR global, c’est qu’il lit tout et mélange :
+
+slogans marketing,
+
+labels,
+
+texte décoratif,
+
+tableau nutritionnel,
+
+infos inutiles.
+
+Il vaut mieux :
+
+détecter les images avec tableau,
+
+découper les zones utiles,
+
+lire spécifiquement les parties “nutrition / aminogramme / ingrédients”.
+
+Donc ton besoin n’est pas juste “plus d’OCR”, mais meilleur ciblage avant OCR.
+
+6. Créer des extracteurs spécialisés par type d’info
+
+Aujourd’hui, si tu traites tout avec une logique générique, tu perds en précision.
+
+Il faut un extracteur spécifique pour :
+
+Prix
+
+Chercher :
+
+prix principal
+
+ancien prix
+
+prix promo
+
+prix au kilo si dispo
+
+Aminogramme
+
+Chercher :
+
+blocs texte avec leucine, isoleucine, valine, EAA, BCAA
+
+images contenant des tableaux
+
+onglets “aminogramme”
+
+Valeurs nutritionnelles
+
+Chercher :
+
+protéines
+
+glucides
+
+lipides
+
+kcal
+
+portion / 100 g
+
+Ingrédients
+
+Chercher :
+
+blocs texte longs
+
+texte après “ingrédients :”
+
+images ingrédients si absents du HTML
+
+En réalité, ton souci ressemble souvent à ça
+
+Tu as sûrement déjà un système qui fait :
+
+recherche produit,
+
+ouverture de la fiche,
+
+extraction standard,
+
+OCR si besoin.
+
+Mais il lui manque sûrement ces 4 étapes clés :
+
+A. clic automatique sur les éléments cachés
+B. récupération des images secondaires
+C. OCR sur les bonnes images seulement
+D. relance de l’extraction après interaction
+
+Et c’est souvent là que se joue une énorme partie du gain.
+
+La bonne logique de traitement
+
+Pour chaque page produit, ton logiciel devrait faire :
+
+Étape 1
+
+Détecter que c’est bien une vraie fiche produit
+
+Étape 2
+
+Attendre que la page soit totalement rendue
+
+Étape 3
+
+Fermer les pop-ups éventuels
+
+Étape 4
+
+Cliquer sur :
+
+composition
+
+nutrition
+
+aminogramme
+
+description
+
+ingrédients
+
+voir plus
+
+Étape 5
+
+Scroller pour déclencher le lazy-load
+
+Étape 6
+
+Récupérer :
+
+texte visible
+
+texte des blocs ouverts
+
+images du carrousel
+
+données structurées éventuelles
+
+Étape 7
+
+Analyser les images :
+
+détecter celles avec tableau
+
+OCR ciblé
+
+Étape 8
+
+Fusionner les résultats avec priorité
+
+Priorité des sources dans ton cas
+
+Je te conseillerais cette logique :
+
+Pour le prix
+
+bloc prix visible
+
+données structurées si présentes
+
+variante active
+
+regex secours
+
+Pour l’aminogramme
+
+texte HTML déroulé
+
+image secondaire OCR
+
+description longue
+
+image principale OCR en dernier
+
+Pour la nutrition
+
+tableau HTML
+
+image nutrition OCR
+
+description
+
+heuristique secours
