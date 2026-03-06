@@ -1610,7 +1610,7 @@ def get_user_preferences(user_id: int) -> dict:
         row = cur.fetchone()
         if row:
             return dict(row)
-        return {"weight_protein": 50, "weight_health": 35, "weight_price": 15}
+        return {"weight_protein": 50, "weight_health": 35, "weight_price": 15, "email_alerts": False}
     finally:
         cur.close()
         release_connection(conn)
@@ -1708,6 +1708,19 @@ def ensure_user_favorites_table():
         """)
         cur.execute("CREATE INDEX IF NOT EXISTS idx_user_favorites_user ON user_favorites(user_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_user_favorites_product ON user_favorites(product_id)")
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS user_badges (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                badge_type VARCHAR(50) NOT NULL,
+                earned_at TIMESTAMP DEFAULT NOW(),
+                UNIQUE(user_id, badge_type)
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_user_badges_user ON user_badges(user_id)")
+        cur.execute("ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS email_alerts BOOLEAN DEFAULT FALSE")
+
         conn.commit()
     finally:
         cur.close()
@@ -1779,6 +1792,131 @@ def delete_product_image(image_id: int) -> bool:
     except Exception:
         conn.rollback()
         return False
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def get_user_badges(user_id: int) -> list:
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("SELECT badge_type, earned_at FROM user_badges WHERE user_id = %s ORDER BY earned_at", (user_id,))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def award_badge(user_id: int, badge_type: str) -> bool:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("INSERT INTO user_badges (user_id, badge_type) VALUES (%s, %s) ON CONFLICT DO NOTHING", (user_id, badge_type))
+        conn.commit()
+        return cur.rowcount > 0
+    except Exception:
+        conn.rollback()
+        return False
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def check_and_award_badges(user_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT COUNT(*) FROM reviews WHERE user_id = %s AND is_hidden = FALSE", (user_id,))
+        review_count = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM recommendations WHERE user_id = %s AND is_hidden = FALSE", (user_id,))
+        reco_count = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM price_alerts WHERE user_id = %s", (user_id,))
+        alert_count = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM user_favorites WHERE user_id = %s", (user_id,))
+        fav_count = cur.fetchone()[0]
+    finally:
+        cur.close()
+        release_connection(conn)
+
+    if review_count >= 1:
+        award_badge(user_id, "first_review")
+    if review_count >= 10:
+        award_badge(user_id, "top_reviewer")
+    if reco_count >= 3:
+        award_badge(user_id, "community_helper")
+    if alert_count >= 3:
+        award_badge(user_id, "price_hunter")
+    if fav_count >= 5:
+        award_badge(user_id, "collector")
+
+
+def get_recent_products(days: int = 30, limit: int = 10) -> list:
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("""
+            SELECT p.*, o.prix_par_kg AS offer_prix_par_kg, o.prix AS offer_prix, o.poids_kg AS offer_poids_kg
+            FROM products p
+            LEFT JOIN LATERAL (
+                SELECT prix_par_kg, prix, poids_kg FROM offers WHERE product_id = p.id AND is_active = TRUE
+                ORDER BY confidence DESC LIMIT 1
+            ) o ON TRUE
+            WHERE p.created_at >= NOW() - make_interval(days => %s)
+              AND p.score_final IS NOT NULL
+            ORDER BY p.created_at DESC
+            LIMIT %s
+        """, (days, limit))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def get_anomalous_products() -> dict:
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    results = {}
+    try:
+        cur.execute("SELECT id, name, brand, proteines_100g FROM products WHERE proteines_100g > 95")
+        results["high_protein"] = [dict(r) for r in cur.fetchall()]
+
+        cur.execute("SELECT id, name, brand FROM products WHERE name LIKE '%%|%%' OR name LIKE '%%Acheter%%'")
+        results["bad_names"] = [dict(r) for r in cur.fetchall()]
+
+        cur.execute("""
+            SELECT p.id, p.name, p.brand FROM products p
+            LEFT JOIN offers o ON p.id = o.product_id AND o.is_active = TRUE
+            WHERE o.id IS NULL AND p.score_final IS NOT NULL
+        """)
+        results["no_price"] = [dict(r) for r in cur.fetchall()]
+
+        cur.execute("""
+            SELECT name, brand, COUNT(*) as cnt FROM products
+            GROUP BY name, brand HAVING COUNT(*) > 1
+        """)
+        results["duplicates"] = [dict(r) for r in cur.fetchall()]
+
+        cur.execute("SELECT id, name, brand FROM products WHERE image_url IS NULL OR image_url = ''")
+        results["no_image"] = [dict(r) for r in cur.fetchall()]
+
+        return results
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def save_email_alert_preference(user_id: int, enabled: bool):
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO user_preferences (user_id, email_alerts) VALUES (%s, %s)
+            ON CONFLICT (user_id) DO UPDATE SET email_alerts = %s
+        """, (user_id, enabled, enabled))
+        conn.commit()
+    except Exception:
+        conn.rollback()
     finally:
         cur.close()
         release_connection(conn)

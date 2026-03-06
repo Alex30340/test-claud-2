@@ -25,6 +25,8 @@ from db import (
     ensure_product_images_table, get_product_images, add_product_image, delete_product_image,
     ensure_user_favorites_table, toggle_favorite, is_favorite, get_user_favorites, get_user_favorites_count,
     get_connection, release_connection, upsert_product, upsert_offer,
+    get_user_badges, check_and_award_badges, get_recent_products, get_anomalous_products,
+    save_email_alert_preference,
 )
 from auth import hash_password, verify_password
 from page_validator import validate_url_debug, is_whey_product_page
@@ -2066,6 +2068,34 @@ def render_catalog_results(products):
         st.info("Aucun produit ne correspond a vos criteres. Essayez d'elargir vos filtres ou de modifier votre recherche.")
         return
 
+    if current_page == 0 and not search_query and not filter_favs:
+        if st.checkbox("Classements thematiques", key="show_rankings"):
+            _render_thematic_rankings(df)
+            st.divider()
+
+        new_products = get_recent_products(days=30, limit=6)
+        if new_products:
+            st.markdown("#### Nouveautes")
+            np_cols = st.columns(min(len(new_products), 3))
+            for i, np_item in enumerate(new_products):
+                with np_cols[i % 3]:
+                    np_score = np_item.get("score_final")
+                    np_color = score_color_10(np_score) if np_score else "#64748b"
+                    np_name = np_item.get("name", "?")[:35]
+                    np_brand = np_item.get("brand", "")
+                    np_prot = np_item.get("proteines_100g")
+                    st.markdown(f"""<div style='background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.15);border-radius:10px;padding:14px;margin-bottom:8px;'>
+                    <div style='font-weight:700;color:#f0f2f5;font-size:0.9em;'>{html_module.escape(np_name)}</div>
+                    <div style='color:#8b95a5;font-size:0.78em;'>{html_module.escape(np_brand)}</div>
+                    <div style='margin-top:6px;'><span style='color:{np_color};font-weight:800;font-size:1.1em;'>{np_score:.1f}</span><span style='color:#64748b;font-size:0.8em;'>/10</span>
+                    {f" · {np_prot:.0f}g prot" if np_prot else ""}</div>
+                    </div>""", unsafe_allow_html=True)
+                    if st.button("Voir", key=f"new_prod_{np_item['id']}", width="stretch"):
+                        st.session_state.selected_product_id = np_item["id"]
+                        st.session_state.page = "product"
+                        st.rerun()
+            st.divider()
+
     search_info = ""
     if search_query:
         search_info = f" pour « {search_query} »"
@@ -2118,6 +2148,7 @@ def render_catalog_results(products):
                     fav_label = "Retirer favori" if fav else "Favori"
                     if st.button(fav_label, key=f"cat_fav_{product_id}_{rank}", width="stretch"):
                         toggle_favorite(user_ref["id"], int(product_id))
+                        check_and_award_badges(user_ref["id"])
                         st.rerun()
 
     if st.session_state.compare_list:
@@ -2261,6 +2292,7 @@ def render_sidebar():
         nav_pages = [
             ("catalogue", "Catalogue"),
             ("compare", "Comparateur"),
+            ("guide", "Guide d'achat"),
             ("admin", "Administration"),
         ]
 
@@ -2294,6 +2326,18 @@ def render_sidebar():
         if fav_count > 0:
             st.caption(f"Favoris : {fav_count} produit{'s' if fav_count > 1 else ''}")
 
+        badges = get_user_badges(user["id"])
+        if badges:
+            badge_icons = {
+                "first_review": "Premier avis",
+                "top_reviewer": "Top reviewer (10+)",
+                "community_helper": "Contributeur (3+ recos)",
+                "price_hunter": "Chasseur de prix (3+ alertes)",
+                "collector": "Collectionneur (5+ favoris)",
+            }
+            badge_txt = " · ".join(badge_icons.get(b["badge_type"], b["badge_type"]) for b in badges)
+            st.caption(f"Badges : {badge_txt}")
+
         if st.checkbox("Preferences de score", key="show_pref_score"):
             prefs = get_user_preferences(user["id"])
             wp = st.slider("Poids Proteines (%)", 0, 100, int(prefs["weight_protein"]), 5, key="pref_protein")
@@ -2302,6 +2346,13 @@ def render_sidebar():
             total_w = wp + wh + wpx
             if total_w != 100:
                 st.warning(f"Total: {total_w}% (doit etre 100%)")
+            prefs_email = prefs.get("email_alerts", False)
+            email_toggle = st.toggle("Recevoir les alertes par email", value=bool(prefs_email), key="pref_email_alerts")
+            if email_toggle != bool(prefs_email):
+                save_email_alert_preference(user["id"], email_toggle)
+            if email_toggle:
+                st.caption("Les notifications email seront bientot disponibles.")
+
             if st.button("Sauvegarder", key="save_prefs", width="stretch", disabled=(total_w != 100)):
                 save_user_preferences(user["id"], wp, wh, wpx)
                 st.success("Preferences enregistrees !")
@@ -2552,9 +2603,15 @@ def page_landing():
     </div>
     """, unsafe_allow_html=True)
 
-    if st.button("Mentions legales & Avertissements", key="landing_mentions", type="secondary"):
-        st.session_state.page = "mentions"
-        st.rerun()
+    lf1, lf2 = st.columns(2)
+    with lf1:
+        if st.button("Guide d'achat personnalise", key="landing_guide"):
+            st.session_state.page = "guide"
+            st.rerun()
+    with lf2:
+        if st.button("Mentions legales & Avertissements", key="landing_mentions"):
+            st.session_state.page = "mentions"
+            st.rerun()
 
 
 # ── AUTH PAGES ──
@@ -2671,6 +2728,57 @@ def page_register():
         if st.button("Retour a l'accueil", width="stretch", key="back_landing_from_register"):
             st.session_state.page = "landing"
             st.rerun()
+
+
+def _render_thematic_rankings(df):
+    nom_col = "nom" if "nom" in df.columns else "name" if "name" in df.columns else None
+    marque_col = "marque" if "marque" in df.columns else "brand" if "brand" in df.columns else None
+    prix_col = "prix_par_kg" if "prix_par_kg" in df.columns else "offer_prix_par_kg" if "offer_prix_par_kg" in df.columns else None
+
+    def _top5(sub_df, label):
+        top = sub_df.head(5)
+        if top.empty:
+            return
+        st.markdown(f"**{label}**")
+        for rank, (_, row) in enumerate(top.iterrows(), 1):
+            name = (row.get(nom_col, "?") if nom_col else "?")
+            name = str(name)[:30] if name else "?"
+            brand = str(row.get(marque_col, "") if marque_col else "")
+            score = row.get("score_final")
+            s_txt = f"{score:.1f}/10" if score and pd.notna(score) else "—"
+            prix = row.get(prix_col) if prix_col else None
+            p_txt = f"{prix:.0f} EUR/kg" if prix and pd.notna(prix) else ""
+            prot = row.get("proteines_100g")
+            pr_txt = f"{prot:.0f}g prot" if prot and pd.notna(prot) else ""
+            st.markdown(f"{rank}. **{name}** ({brand}) — {s_txt} {' · ' + p_txt if p_txt else ''} {' · ' + pr_txt if pr_txt else ''}")
+
+    scored = df[df["score_final"].notna() & (df["score_final"] > 0)].copy()
+
+    st.markdown("#### Classements")
+    rc1, rc2 = st.columns(2)
+    with rc1:
+        if prix_col and prix_col in scored.columns:
+            best_value = scored[scored[prix_col].notna() & (scored[prix_col] > 0)].copy()
+            best_value["value_ratio"] = best_value["score_final"] / (best_value[prix_col] / 30)
+            best_value = best_value.sort_values("value_ratio", ascending=False)
+            _top5(best_value, "Meilleur rapport qualite/prix")
+
+        no_sweet = scored.copy()
+        for sw_col in ["has_sucralose", "has_acesulfame_k", "has_aspartame"]:
+            if sw_col in no_sweet.columns:
+                no_sweet = no_sweet[~no_sweet[sw_col].fillna(False).astype(bool)]
+        no_sweet = no_sweet.sort_values("score_final", ascending=False)
+        _top5(no_sweet, "Top sans edulcorant")
+
+    with rc2:
+        if "origin_label" in scored.columns:
+            france = scored[scored["origin_label"] == "France"].sort_values("score_final", ascending=False)
+            _top5(france, "Top Made in France")
+
+        if prix_col and prix_col in scored.columns:
+            beginners = scored[scored[prix_col].notna() & (scored[prix_col] > 0)].copy()
+            beginners = beginners.sort_values(prix_col, ascending=True)
+            _top5(beginners, "Meilleur pour debutants (petit prix)")
 
 
 # ── CATALOGUE PAGE ──
@@ -2852,6 +2960,59 @@ def page_compare():
                 st.rerun()
 
     st.divider()
+
+    if len(products) >= 2:
+        st.markdown("#### Comparaison visuelle")
+        try:
+            import matplotlib
+            matplotlib.use("Agg")
+            import matplotlib.pyplot as plt
+            import numpy as np
+            from io import BytesIO
+
+            categories = ["Proteines", "Sante", "Prix", "BCAA", "Leucine"]
+            num_cats = len(categories)
+            angles = np.linspace(0, 2 * np.pi, num_cats, endpoint=False).tolist()
+            angles += angles[:1]
+
+            fig, ax = plt.subplots(figsize=(6, 6), subplot_kw=dict(polar=True))
+            fig.patch.set_facecolor("#0e1117")
+            ax.set_facecolor("#0e1117")
+
+            colors = ["#2563eb", "#f59e0b", "#34d399", "#a855f7", "#ef4444"]
+            for i, p in enumerate(products):
+                vals = [
+                    min((p.get("score_proteique") or 0), 10),
+                    min((p.get("score_sante") or 0), 10),
+                    min(10 - min((p.get("offer_prix_par_kg") or 50) / 10, 10), 10),
+                    min((p.get("bcaa_per_100g_prot") or 0) / 3, 10),
+                    min((p.get("leucine_g") or 0) / 1.5, 10),
+                ]
+                vals += vals[:1]
+                color = colors[i % len(colors)]
+                ax.plot(angles, vals, 'o-', linewidth=2, label=p.get("name", "")[:25], color=color)
+                ax.fill(angles, vals, alpha=0.1, color=color)
+
+            ax.set_xticks(angles[:-1])
+            ax.set_xticklabels(categories, color="#94a3b8", fontsize=10)
+            ax.set_ylim(0, 10)
+            ax.set_yticks([2, 4, 6, 8, 10])
+            ax.set_yticklabels(["2", "4", "6", "8", "10"], color="#64748b", fontsize=8)
+            ax.spines['polar'].set_color('#1e293b')
+            ax.tick_params(colors='#64748b')
+            ax.grid(color='#1e293b', linewidth=0.5)
+            ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1), fontsize=8, facecolor='#0e1117', edgecolor='#1e293b', labelcolor='#94a3b8')
+
+            buf = BytesIO()
+            fig.savefig(buf, format="png", dpi=120, bbox_inches="tight", facecolor="#0e1117")
+            plt.close(fig)
+            buf.seek(0)
+            st.image(buf, use_container_width=True)
+        except Exception as e:
+            st.caption(f"Graphique radar indisponible: {e}")
+
+    st.divider()
+
     compare_csv_rows = []
     for p in products:
         compare_csv_rows.append({
@@ -2867,10 +3028,23 @@ def page_compare():
     compare_df = pd.DataFrame(compare_csv_rows)
     csv_compare = compare_df.to_csv(index=False, sep=";", encoding="utf-8-sig")
 
-    col_exp1, col_exp2 = st.columns(2)
+    pdf_content = f"COMPARAISON PROTEINSCAN - {datetime.now().strftime('%d/%m/%Y')}\n{'='*60}\n\n"
+    for p in products:
+        pdf_content += f"{p.get('name', '?')} ({p.get('brand', '?')})\n"
+        pdf_content += f"  Score: {p.get('score_final', 'N/D')}/10\n"
+        pdf_content += f"  Proteines: {p.get('proteines_100g', 'N/D')}g/100g\n"
+        pdf_content += f"  Prix/kg: {p.get('offer_prix_par_kg', 'N/D')} EUR\n"
+        pdf_content += f"  Type: {p.get('type_whey', 'N/D')}\n"
+        pdf_content += f"  BCAA: {p.get('bcaa_per_100g_prot', 'N/D')}g/100g prot\n"
+        pdf_content += f"  Leucine: {p.get('leucine_g', 'N/D')}g\n"
+        pdf_content += f"  Score proteique: {p.get('score_proteique', 'N/D')}/10\n"
+        pdf_content += f"  Score sante: {p.get('score_sante', 'N/D')}/10\n\n"
+    pdf_content += f"{'='*60}\nGenere par ProteinScan - comparateur independant de whey\n"
+
+    col_exp1, col_exp2, col_exp3 = st.columns(3)
     with col_exp1:
         st.download_button(
-            label="Exporter la comparaison (CSV)",
+            label="Exporter (CSV)",
             data=csv_compare,
             file_name=f"comparaison_whey_{datetime.now().strftime('%Y%m%d')}.csv",
             mime="text/csv",
@@ -2878,10 +3052,19 @@ def page_compare():
             key="compare_csv_download",
         )
     with col_exp2:
+        st.download_button(
+            label="Exporter (TXT)",
+            data=pdf_content,
+            file_name=f"comparaison_whey_{datetime.now().strftime('%Y%m%d')}.txt",
+            mime="text/plain",
+            width="stretch",
+            key="compare_txt_download",
+        )
+    with col_exp3:
         share_ids = ",".join(str(p["id"]) for p in products)
         share_url = f"?compare={share_ids}"
         st.code(share_url, language=None)
-        st.caption("Copiez ce lien pour partager cette comparaison")
+        st.caption("Lien de partage")
 
 
 # ── PRODUCT DETAIL PAGE ──
@@ -3003,6 +3186,7 @@ def page_product():
             fav_btn_label = "Retirer des favoris" if fav_status else "Ajouter aux favoris"
             if st.button(fav_btn_label, key="prod_fav_toggle", width="stretch"):
                 toggle_favorite(user["id"], product_id)
+                check_and_award_badges(user["id"])
                 st.rerun()
 
     gallery_images = get_product_images(product_id)
@@ -3182,6 +3366,24 @@ def page_product():
             st.subheader("Historique des prix")
             hist_df = pd.DataFrame(price_hist)
             hist_df["recorded_at"] = pd.to_datetime(hist_df["recorded_at"])
+            hist_df = hist_df.sort_values("recorded_at")
+
+            prices = hist_df["prix_par_kg"].dropna()
+            if len(prices) >= 2:
+                current_p = prices.iloc[-1]
+                min_p = prices.min()
+                max_p = prices.max()
+                first_p = prices.iloc[0]
+                trend = current_p - first_p
+
+                tc1, tc2, tc3 = st.columns(3)
+                with tc1:
+                    st.metric("Prix actuel", f"{current_p:.0f} EUR/kg", delta=f"{trend:+.0f} EUR" if abs(trend) > 0.5 else "stable", delta_color="inverse")
+                with tc2:
+                    st.metric("Meilleur prix", f"{min_p:.0f} EUR/kg")
+                with tc3:
+                    st.metric("Plus haut", f"{max_p:.0f} EUR/kg")
+
             hist_df = hist_df.set_index("recorded_at")
             st.line_chart(hist_df[["prix_par_kg"]].rename(columns={"prix_par_kg": "Prix/kg (EUR)"}))
 
@@ -3200,6 +3402,7 @@ def page_product():
             target = st.number_input("M'alerter quand le prix descend sous (EUR/kg)", min_value=1, max_value=500, value=int(best_prix_kg * 0.9) if best_prix_kg else 50, key="alert_target")
             if st.button("Creer l'alerte", key="create_alert", width="stretch"):
                 create_price_alert(user["id"], product_id, float(target))
+                check_and_award_badges(user["id"])
                 st.success(f"Alerte creee ! Vous serez notifie quand le prix descend sous {target} EUR/kg.")
 
         user_alerts = get_user_price_alerts(user["id"])
@@ -3264,6 +3467,7 @@ def page_product():
                             purchased_from=review_purchased.strip(),
                         )
                         if result:
+                            check_and_award_badges(user["id"])
                             st.success("Avis publie !")
                             cached_get_reviews.clear()
                             cached_get_average_rating.clear()
@@ -3336,6 +3540,7 @@ def page_product():
                             comment=reco_comment.strip(),
                         )
                         if result:
+                            check_and_award_badges(user["id"])
                             st.success("Recommandation publiee !")
                             st.rerun()
                         else:
@@ -3872,6 +4077,82 @@ def page_admin():
 
     st.markdown("")
 
+    st.markdown("<div class='admin-section'><div class='admin-section-title'>Detection d'anomalies</div><div class='admin-section-desc'>Produits avec des donnees suspectes ou incompletes.</div>", unsafe_allow_html=True)
+    if st.button("Lancer l'analyse", key="btn_anomalies"):
+        anomalies = get_anomalous_products()
+        total_issues = sum(len(v) for v in anomalies.values())
+        if total_issues == 0:
+            st.success("Aucune anomalie detectee.")
+        else:
+            st.warning(f"{total_issues} anomalie(s) detectee(s)")
+            if anomalies["high_protein"]:
+                st.markdown(f"**Proteines > 95g/100g ({len(anomalies['high_protein'])})**")
+                for p in anomalies["high_protein"]:
+                    st.markdown(f"- {p['name']} ({p['brand']}) — {p['proteines_100g']}g [ID:{p['id']}]")
+            if anomalies["bad_names"]:
+                st.markdown(f"**Noms suspects ({len(anomalies['bad_names'])})**")
+                for p in anomalies["bad_names"]:
+                    ac1, ac2 = st.columns([4, 1])
+                    with ac1:
+                        st.markdown(f"- {p['name']} ({p.get('brand', '')}) [ID:{p['id']}]")
+                    with ac2:
+                        if st.button("Supprimer", key=f"del_anom_{p['id']}"):
+                            conn_a = get_connection()
+                            cur_a = conn_a.cursor()
+                            cur_a.execute("DELETE FROM offers WHERE product_id = %s", (p['id'],))
+                            cur_a.execute("DELETE FROM products WHERE id = %s", (p['id'],))
+                            conn_a.commit()
+                            cur_a.close()
+                            release_connection(conn_a)
+                            cached_get_all_products.clear()
+                            st.rerun()
+            if anomalies["no_price"]:
+                st.markdown(f"**Sans prix ({len(anomalies['no_price'])})**")
+                for p in anomalies["no_price"][:10]:
+                    st.markdown(f"- {p['name']} ({p.get('brand', '')}) [ID:{p['id']}]")
+            if anomalies["duplicates"]:
+                st.markdown(f"**Doublons ({len(anomalies['duplicates'])})**")
+                for d in anomalies["duplicates"]:
+                    st.markdown(f"- {d['name']} ({d.get('brand', '')}) x{d['cnt']}")
+            if anomalies["no_image"]:
+                st.markdown(f"**Sans image ({len(anomalies['no_image'])})**")
+                for p in anomalies["no_image"][:10]:
+                    st.markdown(f"- {p['name']} ({p.get('brand', '')}) [ID:{p['id']}]")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("")
+
+    st.markdown("<div class='admin-section'><div class='admin-section-title'>Re-scraper les fiches incompletes</div><div class='admin-section-desc'>Relance l'extraction sur les produits sans image, sans nutrition ou sans score.</div>", unsafe_allow_html=True)
+    incomplete = get_incomplete_products_for_rescrape(limit=20)
+    st.caption(f"{len(incomplete)} produit(s) incomplet(s) detecte(s)")
+    if incomplete and st.button("Lancer le re-scraping", key="btn_rescrape_incomplete", type="primary"):
+        progress = st.progress(0)
+        status = st.empty()
+        success_count = 0
+        for i, inc_p in enumerate(incomplete):
+            status.text(f"Re-scraping {i+1}/{len(incomplete)}: {inc_p.get('name', '?')[:40]}...")
+            progress.progress((i + 1) / len(incomplete))
+            try:
+                from scraper import extract_product_data, split_product_offer
+                url = inc_p.get("offer_url")
+                if not url:
+                    continue
+                result = extract_product_data(url, force_browser=True)
+                if result and result.get("name"):
+                    product_data, offer_data = split_product_offer(result)
+                    pid = upsert_product(product_data)
+                    if pid and offer_data.get("url"):
+                        upsert_offer(pid, offer_data)
+                    success_count += 1
+            except Exception as e:
+                st.caption(f"Erreur pour {inc_p.get('name', '?')[:30]}: {e}")
+        status.text(f"Termine : {success_count}/{len(incomplete)} produits mis a jour")
+        cached_get_all_products.clear()
+        cached_get_catalog_stats.clear()
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("")
+
     st.markdown("<div class='admin-section'><div class='admin-section-title'>Debug : Validateur de page</div><div class='admin-section-desc'>Testez si une URL sera acceptee ou rejetee par le validateur strict.</div>", unsafe_allow_html=True)
 
     debug_url = st.text_input("URL a tester", placeholder="https://example.fr/produit/whey-isolate-1kg", key="debug_url")
@@ -4016,6 +4297,86 @@ def page_admin():
     st.markdown("</div>", unsafe_allow_html=True)
 
 
+def page_guide():
+    user = st.session_state.user
+    if user:
+        render_sidebar()
+    render_page_header("Guide d'achat personnalise")
+
+    st.markdown("Repondez a ces questions pour obtenir des recommandations adaptees a votre profil.")
+
+    gc1, gc2 = st.columns(2)
+    with gc1:
+        objectif = st.selectbox("Votre objectif principal", ["Prise de muscle", "Seche / perte de gras", "Sante generale", "Recuperation sportive"], key="guide_objectif")
+        budget = st.selectbox("Votre budget", ["Petit budget (< 25 EUR/kg)", "Budget moyen (25-45 EUR/kg)", "Sans limite"], key="guide_budget")
+    with gc2:
+        sans_edul = st.checkbox("Sans edulcorant artificiel", key="guide_no_sweet")
+        made_france = st.checkbox("Fabrication francaise", key="guide_france")
+        has_amino = st.checkbox("Aminogramme complet souhaite", key="guide_amino")
+
+    if st.button("Trouver mes proteines ideales", type="primary", key="guide_go"):
+        all_prods = cached_get_all_products()
+        scored = [p for p in all_prods if p.get("score_final") is not None]
+
+        candidates = scored.copy()
+        if sans_edul:
+            candidates = [p for p in candidates if not p.get("has_sucralose") and not p.get("has_acesulfame_k") and not p.get("has_aspartame")]
+        if made_france:
+            candidates = [p for p in candidates if p.get("origin_label") == "France"]
+        if has_amino:
+            candidates = [p for p in candidates if p.get("has_aminogram")]
+
+        if budget == "Petit budget (< 25 EUR/kg)":
+            candidates = [p for p in candidates if p.get("offer_prix_par_kg") and p["offer_prix_par_kg"] <= 25]
+        elif budget == "Budget moyen (25-45 EUR/kg)":
+            candidates = [p for p in candidates if p.get("offer_prix_par_kg") and p["offer_prix_par_kg"] <= 45]
+
+        if objectif == "Prise de muscle":
+            candidates.sort(key=lambda x: -(x.get("score_proteique") or 0))
+        elif objectif == "Seche / perte de gras":
+            candidates.sort(key=lambda x: -(x.get("proteines_100g") or 0) + (x.get("sugar_per_100g") or 0))
+        elif objectif == "Sante generale":
+            candidates.sort(key=lambda x: -(x.get("score_sante") or 0))
+        else:
+            candidates.sort(key=lambda x: -(x.get("score_final") or 0))
+
+        top3 = candidates[:3]
+        if not top3:
+            st.warning("Aucun produit ne correspond a tous vos criteres. Essayez de desactiver certains filtres.")
+        else:
+            st.markdown("---")
+            st.markdown("#### Vos 3 meilleures options")
+            for i, p in enumerate(top3, 1):
+                score = p.get("score_final", 0)
+                color = score_color_10(score)
+                name = p.get("name", "?")
+                brand = p.get("brand", "")
+                prot = p.get("proteines_100g")
+                prix = p.get("offer_prix_par_kg")
+
+                st.markdown(f"""<div style='background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:20px;margin-bottom:12px;'>
+                <div style='display:flex;align-items:center;gap:16px;'>
+                <div style='font-size:1.8em;font-weight:800;color:{color};'>{score:.1f}<span style='font-size:0.5em;color:#64748b;'>/10</span></div>
+                <div>
+                <div style='font-weight:700;font-size:1.05em;color:#f0f2f5;'>{i}. {html_module.escape(name)}</div>
+                <div style='color:#8b95a5;font-size:0.85em;'>{html_module.escape(brand)}</div>
+                <div style='color:#94a3b8;font-size:0.82em;margin-top:4px;'>{f"{prot:.0f}g prot/100g" if prot else ""} {f" · {prix:.0f} EUR/kg" if prix else ""}</div>
+                </div></div></div>""", unsafe_allow_html=True)
+
+                if st.button(f"Voir la fiche", key=f"guide_view_{p['id']}"):
+                    st.session_state.selected_product_id = p["id"]
+                    st.session_state.page = "product"
+                    st.rerun()
+
+    st.markdown("---")
+    st.caption("Ces recommandations sont basees sur notre algorithme de scoring et vos criteres. Consultez un professionnel de sante pour un conseil personnalise.")
+
+    if not user:
+        if st.button("Retour a l'accueil", key="guide_back"):
+            st.session_state.page = "landing"
+            st.rerun()
+
+
 def page_mentions():
     st.markdown("<div style='max-width:800px;margin:0 auto;'>", unsafe_allow_html=True)
 
@@ -4124,6 +4485,8 @@ if st.session_state.user is None:
         page_compare()
     elif page == "mentions":
         page_mentions()
+    elif page == "guide":
+        page_guide()
     else:
         page_landing()
 else:
@@ -4137,6 +4500,8 @@ else:
         page_admin()
     elif page == "mentions":
         page_mentions()
+    elif page == "guide":
+        page_guide()
     elif page in ("login", "register", "landing", "dashboard", "search", "scan"):
         st.session_state.page = "catalogue"
         st.rerun()

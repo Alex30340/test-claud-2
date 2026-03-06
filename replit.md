@@ -29,6 +29,16 @@ The application features a simplified navigation with public and authenticated m
 -   **Community Recommendations**: Allows users to provide recommendations with usage context, level, pros, and cons.
 -   **Light/Dark Theme**: Toggle in sidebar. Light theme CSS overrides for white backgrounds, dark text, and blue accents.
 -   **Database Performance**: Optimized with connection pooling and extensive use of database indexes. Streamlit caching is used for frequently accessed data with appropriate TTLs.
+-   **Radar Chart Comparator**: Matplotlib-generated radar/spider chart comparing products on 5 axes (Proteines, Sante, Prix, BCAA, Leucine). Displayed in comparator when 2+ products selected.
+-   **Thematic Rankings**: Auto-generated rankings on catalog page: "Meilleur rapport qualité/prix", "Top sans édulcorant", "Top Made in France", "Meilleur pour débutants". Toggleable via checkbox.
+-   **Guide d'achat personnalisé**: Questionnaire (objectif, budget, sensibilités) recommending top 3 matching products. Accessible from sidebar nav and landing page.
+-   **Anomaly Detection (Admin)**: Dashboard flagging products with suspicious data (protein > 95g, bad names, no price, duplicates, no image). Includes delete actions.
+-   **Nouveautés Section**: Shows recently added products (last 30 days) at top of catalog page.
+-   **User Badges System**: `user_badges` table. Badge types: first_review, top_reviewer, community_helper, price_hunter, collector. Awarded automatically on relevant actions. Displayed in sidebar.
+-   **Enhanced Price History**: Price trend indicators (current vs historical), best/highest price metrics, improved chart on product detail page.
+-   **Export TXT**: Text export of comparisons alongside existing CSV export.
+-   **Auto-Rescrape (Admin)**: Re-scrape incomplete products (missing image, nutrition, score) with progress bar.
+-   **Email Alert Preference**: Toggle in user preferences to opt-in for email notifications (placeholder for future email integration).
 
 ### System Design Choices
 -   **PostgreSQL Database**: Serves as the primary data store for all application data.
@@ -51,6 +61,7 @@ The application features a simplified navigation with public and authenticated m
 - **user_preferences**: id, user_id (FK, unique), weight_protein (default 50), weight_health (default 35), weight_price (default 15), updated_at
 - **product_images**: id, product_id (FK), image_url, sort_order, created_at
 - **user_favorites**: id, user_id (FK), product_id (FK), created_at, UNIQUE(user_id, product_id)
+- **user_badges**: id, user_id (FK), badge_type (VARCHAR), earned_at, UNIQUE(user_id, badge_type)
 
 ## External Dependencies
 -   `streamlit`: Web application UI framework.
@@ -62,6 +73,7 @@ The application features a simplified navigation with public and authenticated m
 -   `bcrypt`: Password hashing.
 -   `psycopg2-binary`: PostgreSQL adapter.
 -   `playwright`: Headless browser automation.
+-   `matplotlib`: Radar chart generation for comparator.
 -   **PostgreSQL**: Primary database.
 -   **Brave Search API**: Used for product discovery.
 -   `openai`: For GPT-4o vision OCR (via Replit AI Integrations).

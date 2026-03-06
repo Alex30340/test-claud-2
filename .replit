@@ -5,7 +5,7 @@ run = ["streamlit", "run", "app.py", "--server.port", "5000"]
 
 [nix]
 channel = "stable-25_05"
-packages = ["cargo", "gitFull", "glibcLocales", "libiconv", "playwright-driver", "rustc", "xcodebuild", "zlib", "nspr", "nss", "xorg.libX11", "xorg.libXcomposite", "xorg.libXdamage", "xorg.libXext", "xorg.libXfixes", "xorg.libXrandr", "mesa", "expat", "alsa-lib", "at-spi2-atk", "cups", "libdrm", "libxkbcommon", "pango", "cairo", "glib", "dbus", "gtk3"]
+packages = ["alsa-lib", "at-spi2-atk", "cairo", "cargo", "cups", "dbus", "expat", "ffmpeg-full", "freetype", "ghostscript", "gitFull", "glib", "glibcLocales", "gobject-introspection", "gtk3", "libdrm", "libiconv", "libxkbcommon", "mesa", "nspr", "nss", "pango", "pkg-config", "playwright-driver", "qhull", "rustc", "tcl", "tk", "xcodebuild", "xorg.libX11", "xorg.libXcomposite", "xorg.libXdamage", "xorg.libXext", "xorg.libXfixes", "xorg.libXrandr", "zlib"]
 
 [workflows]
 runButton = "Project"
