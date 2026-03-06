@@ -3037,6 +3037,7 @@ def page_admin():
     with rescrape_col:
         st.markdown("<div class='admin-section'><div class='admin-section-title'>Re-scrape incomplets</div><div class='admin-section-desc'>Re-scrape les produits avec donnees manquantes (proteines, ingredients, images).</div>", unsafe_allow_html=True)
         rescrape_limit = st.number_input("Nombre de produits", min_value=1, max_value=100, value=20, key="rescrape_limit")
+        use_browser = st.checkbox("Utiliser le navigateur (Playwright)", value=False, key="rescrape_browser", help="Plus lent mais extrait les donnees cachees dans les accordeons, onglets et contenu JS.")
         if st.button("Lancer le re-scrape", key="btn_rescrape", type="primary"):
             incomplete_products = get_incomplete_products_for_rescrape(limit=rescrape_limit)
             if not incomplete_products:
@@ -3047,14 +3048,18 @@ def page_admin():
                 detail_rs = st.empty()
                 updated = 0
                 errors = 0
+                browser_used = 0
                 for i, prod in enumerate(incomplete_products):
                     progress_rs.progress((i + 1) / len(incomplete_products))
-                    detail_rs.text(f"Re-scrape: {prod.get('name', '')[:50]}...")
+                    mode = " [navigateur]" if use_browser else ""
+                    detail_rs.text(f"Re-scrape{mode}: {prod.get('name', '')[:50]}...")
                     try:
                         from scraper import extract_product_data, split_product_offer, compute_confidence_v2
                         from db import upsert_product, upsert_offer
-                        result = extract_product_data(prod["offer_url"])
+                        result = extract_product_data(prod["offer_url"], force_browser=use_browser)
                         if result:
+                            if result.get("_used_browser"):
+                                browser_used += 1
                             conf = compute_confidence_v2(result, has_jsonld=bool(result.get("_has_jsonld")), needs_js_render=result.get("_needs_js_render", False))
                             if conf >= 0.2:
                                 product_data, offer_data = split_product_offer(result)
@@ -3063,10 +3068,11 @@ def page_admin():
                     except Exception as e:
                         errors += 1
                     import time
-                    time.sleep(1)
+                    time.sleep(2 if use_browser else 1)
                 progress_rs.empty()
                 detail_rs.empty()
-                status_rs.success(f"Re-scrape termine: {updated} mis a jour, {errors} erreurs.")
+                browser_info = f", {browser_used} via navigateur" if browser_used else ""
+                status_rs.success(f"Re-scrape termine: {updated} mis a jour, {errors} erreurs{browser_info}.")
                 cached_get_all_products.clear()
                 cached_get_catalog_stats.clear()
         st.markdown("</div>", unsafe_allow_html=True)

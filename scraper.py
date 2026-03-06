@@ -1089,19 +1089,45 @@ def _extract_product_image_fallback(soup) -> str:
     return ""
 
 
-def extract_product_data(url: str) -> dict | None:
+def _fetch_with_browser(url: str) -> dict | None:
+    try:
+        from browser_scraper import fetch_page_with_browser
+        return fetch_page_with_browser(url)
+    except ImportError:
+        logger.warning("[SCRAPER] browser_scraper not available")
+        return None
+    except Exception as e:
+        logger.warning(f"[SCRAPER] Browser fetch failed for {url}: {e}")
+        return None
+
+
+def extract_product_data(url: str, force_browser: bool = False) -> dict | None:
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
     }
 
-    try:
-        with httpx.Client(timeout=HTTP_TIMEOUT, follow_redirects=True, verify=False) as client:
-            response = client.get(url, headers=headers)
-            response.raise_for_status()
+    browser_images = []
 
-        soup = BeautifulSoup(response.text, "lxml")
+    try:
+        if force_browser:
+            browser_result = _fetch_with_browser(url)
+            if browser_result:
+                html_text = browser_result["html"]
+                browser_images = browser_result.get("images", [])
+            else:
+                with httpx.Client(timeout=HTTP_TIMEOUT, follow_redirects=True, verify=False) as client:
+                    response = client.get(url, headers=headers)
+                    response.raise_for_status()
+                html_text = response.text
+        else:
+            with httpx.Client(timeout=HTTP_TIMEOUT, follow_redirects=True, verify=False) as client:
+                response = client.get(url, headers=headers)
+                response.raise_for_status()
+            html_text = response.text
+
+        soup = BeautifulSoup(html_text, "lxml")
         jsonld = extract_jsonld(soup)
         og = extract_og_meta(soup)
 
@@ -1205,6 +1231,7 @@ def extract_product_data(url: str) -> dict | None:
             page_url=url,
             enable_ocr=True,
             force_ocr=False,
+            extra_images=browser_images if browser_images else None,
         )
 
         nutrition = multi_result.get("nutrition", {})
@@ -1393,7 +1420,54 @@ def extract_product_data(url: str) -> dict | None:
             "_has_jsonld": jsonld is not None,
             "_price_source": price_source,
             "_needs_js_render": needs_js,
+            "_used_browser": force_browser,
         }
+
+        if not force_browser and needs_js:
+            missing_critical = (
+                protein_per_100g is None
+                or price is None
+                or not ingredients_text
+            )
+            if missing_critical:
+                logger.info(f"[SCRAPER] JS-heavy page with missing data, retrying with browser: {url}")
+                browser_data = _fetch_with_browser(url)
+                if browser_data and browser_data.get("html"):
+                    browser_soup = BeautifulSoup(browser_data["html"], "lxml")
+                    browser_jsonld = extract_jsonld(browser_soup)
+                    browser_og = extract_og_meta(browser_soup)
+                    browser_price, browser_price_source = extract_price(browser_soup)
+                    browser_price = validate_price(browser_price)
+                    if browser_price and not price:
+                        result["prix"] = browser_price
+                        result["_price_source"] = browser_price_source
+                    if not protein_per_100g:
+                        browser_og_data = {}
+                        for meta in browser_soup.find_all("meta", attrs={"property": True}):
+                            browser_og_data[meta.get("property", "")] = meta.get("content", "")
+                        browser_multi = extract_all_nutrition(
+                            soup=browser_soup, jsonld=browser_jsonld, og=browser_og_data,
+                            page_url=url, enable_ocr=True, force_ocr=False,
+                            extra_images=browser_data.get("images"),
+                        )
+                        browser_protein = browser_multi.get("nutrition", {}).get("protein_per_100g")
+                        if browser_protein and browser_protein >= 15 and browser_protein < 96:
+                            result["proteines_100g"] = browser_protein
+                    if not ingredients_text:
+                        browser_text = browser_soup.get_text(" ", strip=True)
+                        browser_ingredients = find_ingredients_block(browser_text, soup=browser_soup)
+                        if browser_ingredients:
+                            result["ingredients"] = browser_ingredients
+                    browser_img = browser_og.get("og:image", "")
+                    if not browser_img and browser_jsonld:
+                        jimg = browser_jsonld.get("image", "")
+                        browser_img = jimg[0] if isinstance(jimg, list) and jimg else str(jimg) if jimg else ""
+                    if browser_img and not result.get("image_url"):
+                        result["image_url"] = browser_img
+                    result["_used_browser"] = True
+                    logger.info(f"[SCRAPER] Browser retry completed for {url}")
+
+        return result
 
     except Exception as e:
         logger.warning(f"Error extracting data from {url}: {e}")

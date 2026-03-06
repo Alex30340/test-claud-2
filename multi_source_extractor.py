@@ -1033,6 +1033,7 @@ def extract_all_nutrition(
     page_url: str,
     enable_ocr: bool = True,
     force_ocr: bool = False,
+    extra_images: list[str] | None = None,
 ) -> dict:
     all_evidences = []
 
@@ -1046,6 +1047,27 @@ def extract_all_nutrition(
 
     if enable_ocr and (force_ocr or should_trigger_ocr(all_evidences)):
         nutrition_images = find_nutrition_images(soup, page_url)
+        if extra_images:
+            nutrition_kw = ["nutri", "valeur", "composition", "amino", "etiquette",
+                            "label", "ingredient", "tableau", "information",
+                            "nutrition-facts", "back", "dos", "verso", "detail"]
+            scored_extra = []
+            for img in extra_images:
+                if img in nutrition_images:
+                    continue
+                img_lower = img.lower()
+                score = sum(1 for kw in nutrition_kw if kw in img_lower)
+                scored_extra.append((score, img))
+            scored_extra.sort(key=lambda x: -x[0])
+            added = 0
+            for score, img in scored_extra:
+                if img not in nutrition_images:
+                    nutrition_images.append(img)
+                    added += 1
+                if added >= 5:
+                    break
+            if added:
+                logger.info(f"[MULTI] Added {added} browser-discovered images, total candidates: {len(nutrition_images)}")
         if nutrition_images:
             logger.info(f"[MULTI] Triggering OCR on {len(nutrition_images)} image(s)")
             for img_url in nutrition_images[:2]:

@@ -66,6 +66,7 @@ The user prefers clear, concise communication. They value iterative development 
 -   `openpyxl`: Library for reading/writing Excel files (used for data export).
 -   `bcrypt`: Password hashing and verification.
 -   `psycopg2-binary`: PostgreSQL database adapter.
+-   `playwright`: Headless browser automation for JS-heavy sites. Requires Chromium + system deps (nspr, nss, mesa, etc.).
 -   **PostgreSQL**: Primary database for storing user accounts, product data, offers, and pipeline run history.
 -   **Brave Search API**: Used for the Discovery pipeline to find new product URLs. (Requires `BRAVE_SEARCH_API_KEY` secret).
 -   `openai`: OpenAI client for GPT-4o vision OCR (via Replit AI Integrations, no API key needed).
@@ -77,7 +78,15 @@ The user prefers clear, concise communication. They value iterative development 
 - **Re-analysis Pipeline**: Re-scrape existing products to populate extended nutrition fields (aminogram, macros) using multi_source_extractor. Targets products where amino_profile IS NULL or kcal_per_100g IS NULL.
 - **Data Quality Dashboard**: Admin section showing catalog completeness (protein, ingredients, score, image, BCAA coverage) with breakdown by missing field and list of incomplete products.
 - **Catalog Cleanup**: Removes non-product entries (category pages, brand homepages, entries with no protein + no ingredients + no score). Uses `_BAD_PRODUCT_NAME_PATTERNS` regex list.
-- **Re-scrape Incomplets**: Pipeline that re-scrapes products with missing data (protein, ingredients, images) using improved extraction logic.
+- **Re-scrape Incomplets**: Pipeline that re-scrapes products with missing data (protein, ingredients, images) using improved extraction logic. Supports optional Playwright browser mode.
+
+## Browser Scraper Architecture (`browser_scraper.py`)
+- **Playwright Integration**: Headless Chromium for JS-heavy sites. Requires `LD_LIBRARY_PATH` pointing to mesa libgbm (`/nix/store/.../mesa-libgbm-.../lib`).
+- **Cookie Dismissal**: Auto-clicks common GDPR/cookie banners (Accepter, Accept all, J'accepte, etc.)
+- **Accordion/Tab Expansion**: Clicks elements matching nutrition keywords (composition, ingrédients, valeurs nutritionnelles, aminogramme, voir plus, etc.) to reveal hidden content.
+- **Lazy-load Scroll**: Scrolls page to trigger lazy-loaded images.
+- **Carousel Image Extraction**: Collects images from product galleries, carousels, sliders; clicks thumbnails to reveal hidden images. Returns up to 30 filtered images.
+- **Integration**: `extract_product_data(url, force_browser=True)` uses browser; auto-retries with browser when `needs_js` detected and critical data missing. Browser images are scored and top 5 added as OCR candidates.
 
 ## Data Quality Architecture
 - **Smart Upsert (`upsert_product`)**: When updating existing products, fields in the `preserve_fields` set are never overwritten with None/empty values. This prevents re-scrapes from erasing previously extracted data.
