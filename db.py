@@ -246,6 +246,43 @@ def init_db():
             created_at TIMESTAMP NOT NULL DEFAULT NOW()
         );
 
+        CREATE TABLE IF NOT EXISTS price_history (
+            id SERIAL PRIMARY KEY,
+            product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+            prix FLOAT,
+            prix_par_kg FLOAT,
+            merchant VARCHAR(255),
+            recorded_at TIMESTAMP NOT NULL DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS price_alerts (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+            target_price FLOAT NOT NULL,
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS notifications (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            message TEXT NOT NULL,
+            link_page VARCHAR(50),
+            link_product_id INTEGER,
+            is_read BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS user_preferences (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+            weight_protein FLOAT DEFAULT 50,
+            weight_health FLOAT DEFAULT 35,
+            weight_price FLOAT DEFAULT 15,
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+        );
+
         CREATE INDEX IF NOT EXISTS idx_offers_product_id ON offers(product_id);
         CREATE INDEX IF NOT EXISTS idx_offers_active ON offers(product_id, confidence DESC, updated_at DESC) WHERE is_active = TRUE;
         CREATE INDEX IF NOT EXISTS idx_reviews_product_id ON reviews(product_id);
@@ -254,6 +291,10 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_scan_items_scan_id ON scan_items(scan_id);
         CREATE INDEX IF NOT EXISTS idx_products_score ON products(score_final DESC NULLS LAST);
         CREATE INDEX IF NOT EXISTS idx_recommendations_product_id ON recommendations(product_id);
+        CREATE INDEX IF NOT EXISTS idx_price_history_product ON price_history(product_id, recorded_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_price_alerts_user ON price_alerts(user_id, is_active) WHERE is_active = TRUE;
+        CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, is_read, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_user_preferences_user ON user_preferences(user_id);
     """)
     conn.commit()
 
@@ -1249,6 +1290,270 @@ def cleanup_catalog() -> dict:
             "removed_count": len(removed_ids),
             "removed_names": removed_names,
         }
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def record_price_snapshot(product_id: int, prix: float, prix_par_kg: float, merchant: str):
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """INSERT INTO price_history (product_id, prix, prix_par_kg, merchant)
+               VALUES (%s, %s, %s, %s)""",
+            (product_id, prix, prix_par_kg, merchant),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def get_price_history(product_id: int, limit: int = 90) -> list[dict]:
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute(
+            """SELECT prix, prix_par_kg, merchant, recorded_at
+               FROM price_history
+               WHERE product_id = %s
+               ORDER BY recorded_at ASC
+               LIMIT %s""",
+            (product_id, limit),
+        )
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def create_price_alert(user_id: int, product_id: int, target_price: float) -> bool:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """INSERT INTO price_alerts (user_id, product_id, target_price)
+               VALUES (%s, %s, %s)
+               ON CONFLICT DO NOTHING""",
+            (user_id, product_id, target_price),
+        )
+        conn.commit()
+        return True
+    except Exception:
+        conn.rollback()
+        return False
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def get_user_price_alerts(user_id: int) -> list[dict]:
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute(
+            """SELECT pa.*, p.name AS product_name, p.brand AS product_brand
+               FROM price_alerts pa
+               JOIN products p ON pa.product_id = p.id
+               WHERE pa.user_id = %s AND pa.is_active = TRUE
+               ORDER BY pa.created_at DESC""",
+            (user_id,),
+        )
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def delete_price_alert(alert_id: int, user_id: int) -> bool:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "UPDATE price_alerts SET is_active = FALSE WHERE id = %s AND user_id = %s",
+            (alert_id, user_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def check_and_trigger_alerts(product_id: int, current_prix_par_kg: float):
+    if current_prix_par_kg is None:
+        return
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute(
+            """SELECT pa.id, pa.user_id, pa.target_price, p.name
+               FROM price_alerts pa
+               JOIN products p ON pa.product_id = p.id
+               WHERE pa.product_id = %s AND pa.is_active = TRUE AND pa.target_price >= %s""",
+            (product_id, current_prix_par_kg),
+        )
+        triggered = cur.fetchall()
+        for alert in triggered:
+            cur.execute(
+                """INSERT INTO notifications (user_id, message, link_page, link_product_id)
+                   VALUES (%s, %s, %s, %s)""",
+                (
+                    alert["user_id"],
+                    f"Le prix de {alert['name']} est descendu a {current_prix_par_kg:.0f} EUR/kg (votre alerte: {alert['target_price']:.0f} EUR/kg)",
+                    "product",
+                    product_id,
+                ),
+            )
+            cur.execute(
+                "UPDATE price_alerts SET is_active = FALSE WHERE id = %s",
+                (alert["id"],),
+            )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def get_user_notifications(user_id: int, limit: int = 20) -> list[dict]:
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute(
+            """SELECT * FROM notifications
+               WHERE user_id = %s
+               ORDER BY created_at DESC
+               LIMIT %s""",
+            (user_id, limit),
+        )
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def get_unread_notification_count(user_id: int) -> int:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT COUNT(*) FROM notifications WHERE user_id = %s AND is_read = FALSE",
+            (user_id,),
+        )
+        return cur.fetchone()[0]
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def mark_notifications_read(user_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "UPDATE notifications SET is_read = TRUE WHERE user_id = %s AND is_read = FALSE",
+            (user_id,),
+        )
+        conn.commit()
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def get_user_preferences(user_id: int) -> dict:
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute(
+            "SELECT * FROM user_preferences WHERE user_id = %s",
+            (user_id,),
+        )
+        row = cur.fetchone()
+        if row:
+            return dict(row)
+        return {"weight_protein": 50, "weight_health": 35, "weight_price": 15}
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def save_user_preferences(user_id: int, weight_protein: float, weight_health: float, weight_price: float) -> bool:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """INSERT INTO user_preferences (user_id, weight_protein, weight_health, weight_price, updated_at)
+               VALUES (%s, %s, %s, %s, NOW())
+               ON CONFLICT (user_id)
+               DO UPDATE SET weight_protein = %s, weight_health = %s, weight_price = %s, updated_at = NOW()""",
+            (user_id, weight_protein, weight_health, weight_price,
+             weight_protein, weight_health, weight_price),
+        )
+        conn.commit()
+        return True
+    except Exception:
+        conn.rollback()
+        return False
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def ensure_product_images_table():
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS product_images (
+                id SERIAL PRIMARY KEY,
+                product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+                image_url TEXT NOT NULL,
+                sort_order INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_product_images_product_id ON product_images(product_id)")
+        conn.commit()
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def add_product_image(product_id: int, image_url: str, sort_order: int = 0) -> bool:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT 1 FROM product_images WHERE product_id = %s AND image_url = %s", (product_id, image_url))
+        if cur.fetchone():
+            return False
+        cur.execute(
+            "INSERT INTO product_images (product_id, image_url, sort_order) VALUES (%s, %s, %s)",
+            (product_id, image_url, sort_order)
+        )
+        conn.commit()
+        return True
+    except Exception:
+        conn.rollback()
+        return False
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def get_product_images(product_id: int) -> list[dict]:
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute(
+            "SELECT id, image_url, sort_order FROM product_images WHERE product_id = %s ORDER BY sort_order, id",
+            (product_id,)
+        )
+        return [dict(r) for r in cur.fetchall()]
     finally:
         cur.close()
         release_connection(conn)

@@ -19,12 +19,17 @@ from db import (
     flag_review, hide_review, get_flagged_reviews,
     get_data_quality_stats, cleanup_catalog, get_incomplete_products_for_rescrape,
     create_recommendation, get_recommendations_for_product, get_top_products,
+    get_price_history, create_price_alert, get_user_price_alerts, delete_price_alert,
+    get_user_notifications, get_unread_notification_count, mark_notifications_read,
+    get_user_preferences, save_user_preferences,
+    ensure_product_images_table, get_product_images, add_product_image,
 )
 from auth import hash_password, verify_password
 from page_validator import validate_url_debug, is_whey_product_page
 from resolver import resolve_url_debug
 
 init_db()
+ensure_product_images_table()
 
 
 @st.cache_data(ttl=300)
@@ -1243,7 +1248,80 @@ div.stAlert {
 
 CARD_CSS = ""
 
+LIGHT_CSS = """
+<style>
+.stApp { background: #f5f7fa !important; }
+section[data-testid="stSidebar"] { background: #ffffff !important; border-right: 1px solid #e2e8f0 !important; }
+section[data-testid="stSidebar"] .stMarkdown h1,
+section[data-testid="stSidebar"] .stMarkdown h2,
+section[data-testid="stSidebar"] .stMarkdown h3 { color: #1a202c !important; }
+div[data-testid="stMetric"] { background: #ffffff !important; border: 1px solid #e2e8f0 !important; }
+div[data-testid="stMetric"] label { color: #64748b !important; }
+div[data-testid="stMetric"] [data-testid="stMetricValue"] { color: #1a202c !important; }
+.stButton > button { border: 1px solid #e2e8f0 !important; background: #ffffff !important; color: #475569 !important; }
+.stButton > button:hover { background: #f1f5f9 !important; border-color: #cbd5e1 !important; }
+.stButton > button[kind="primary"] { background: #2563eb !important; color: white !important; border: 1px solid #2563eb !important; }
+div[data-testid="stForm"] { background: #ffffff !important; border: 1px solid #e2e8f0 !important; }
+.stTextInput > div > div > input,
+.stTextArea > div > div > textarea,
+.stSelectbox > div > div { background: #ffffff !important; border: 1px solid #e2e8f0 !important; color: #1a202c !important; }
+.stTextInput label, .stTextArea label, .stSelectbox label { color: #64748b !important; }
+div[data-testid="stExpander"] { background: #ffffff !important; border: 1px solid #e2e8f0 !important; }
+hr { border-color: #e2e8f0 !important; }
+.sidebar-user { background: #f8fafc !important; border: 1px solid #e2e8f0 !important; }
+.sidebar-user-name { color: #1a202c !important; }
+.sidebar-user-email { color: #64748b !important; }
+.sidebar-user-plan { color: #2563eb !important; }
+.page-header-title { color: #1a202c !important; }
+.page-subtitle { color: #64748b !important; }
+.stat-card { background: #ffffff !important; border: 1px solid #e2e8f0 !important; }
+.stat-card-label { color: #64748b !important; }
+.stat-card-value { color: #1a202c !important; }
+.ps-card { background: #ffffff !important; border: 1px solid #e2e8f0 !important; }
+.ps-title { color: #1a202c !important; }
+.ps-brand { color: #64748b !important; }
+.ps-metric-label { color: #64748b !important; }
+.ps-metric-val { color: #1a202c !important; }
+.ps-quality { color: #64748b !important; }
+.review-card, .reco-card { background: #ffffff !important; border: 1px solid #e2e8f0 !important; }
+.review-author, .reco-author { color: #1a202c !important; }
+.review-comment, .reco-comment { color: #64748b !important; }
+.product-detail-header { background: #ffffff !important; border: 1px solid #e2e8f0 !important; }
+.product-detail-info h1 { color: #1a202c !important; }
+.product-detail-info .brand { color: #64748b !important; }
+.nutrition-table th { background: rgba(37, 99, 235, 0.06) !important; }
+.nutrition-table td { border-bottom: 1px solid #e2e8f0 !important; color: #475569 !important; }
+.nutrition-table .nt-label { color: #1a202c !important; }
+.nutrition-table .nt-value { color: #1a202c !important; }
+.nutrition-table .nt-sub { color: #64748b !important; }
+.landing-hero h1 { color: #1a202c !important; }
+.landing-hero p { color: #64748b !important; }
+.landing-card { background: #ffffff !important; border: 1px solid #e2e8f0 !important; }
+.landing-card h3 { color: #1a202c !important; }
+.landing-card p { color: #64748b !important; }
+.landing-top5-name { color: #1a202c !important; }
+.landing-top5-brand { color: #64748b !important; }
+.landing-steps { background: #ffffff !important; border: 1px solid #e2e8f0 !important; }
+.landing-steps h2, .landing-step h4 { color: #1a202c !important; }
+.landing-step p { color: #64748b !important; }
+.landing-social-proof-num { color: #1a202c !important; }
+.landing-social-proof-label { color: #64748b !important; }
+.landing-navbar { background: rgba(255,255,255,0.95) !important; border-bottom: 1px solid #e2e8f0 !important; }
+.landing-navbar-brand { color: #1a202c !important; }
+.suggestion-card { background: #ffffff !important; border: 1px solid #e2e8f0 !important; }
+.suggestion-card h4 { color: #1a202c !important; }
+.admin-section { background: #ffffff !important; border: 1px solid #e2e8f0 !important; }
+.admin-section-title { color: #1a202c !important; }
+.section-alt { background: #ffffff !important; border: 1px solid #e2e8f0 !important; }
+.login-title { color: #1a202c !important; }
+.login-subtitle { color: #64748b !important; }
+.sidebar-logo-text { color: #1a202c !important; }
+</style>
+"""
+
 st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
+if st.session_state.get("theme") == "light":
+    st.markdown(LIGHT_CSS, unsafe_allow_html=True)
 
 api_key = os.environ.get("BRAVE_API_KEY", "") or os.environ.get("BRAVE_SEARCH_API_KEY", "")
 
@@ -1254,6 +1332,26 @@ if "compare_list" not in st.session_state:
     st.session_state.compare_list = []
 if "page" not in st.session_state or st.session_state.page is None:
     st.session_state.page = "landing"
+if "theme" not in st.session_state:
+    st.session_state.theme = "dark"
+
+if "query_params_parsed" not in st.session_state:
+    st.session_state.query_params_parsed = True
+    params = st.query_params
+    if "product" in params:
+        try:
+            pid = int(params["product"])
+            st.session_state.selected_product_id = pid
+            st.session_state.page = "product"
+        except (ValueError, TypeError):
+            pass
+    elif "compare" in params:
+        try:
+            ids = [int(x) for x in params["compare"].split(",") if x.strip()]
+            st.session_state.compare_list = ids[:5]
+            st.session_state.page = "compare"
+        except (ValueError, TypeError):
+            pass
 
 
 def logout():
@@ -1746,9 +1844,18 @@ def render_catalog_results(products):
         type_options_full = type_options + (["Unknown"] if "unknown" in df["type_whey"].fillna("unknown").str.lower().unique() else [])
         filter_type = st.selectbox("Type de whey", type_options_full, key="cat_filter_type")
 
-    search_query = st.text_input("🔍 Rechercher un produit (nom ou marque)", key="cat_search_query", placeholder="Ex: myprotein, isolate, native...")
+    search_query = st.text_input("Rechercher un produit (nom ou marque)", key="cat_search_query", placeholder="Ex: myprotein, isolate, native...")
 
-    filter_key = f"{search_query}|{filter_top}|{filter_no_sweetener}|{filter_france}|{filter_clean}|{filter_type}|{sort_option}"
+    with st.expander("Filtres avances"):
+        sl_col1, sl_col2, sl_col3 = st.columns(3)
+        with sl_col1:
+            min_score = st.slider("Score minimum", 0.0, 10.0, 0.0, 0.5, key="cat_min_score")
+        with sl_col2:
+            min_prot = st.slider("Proteines min (g/100g)", 0, 95, 0, 5, key="cat_min_prot")
+        with sl_col3:
+            max_prix = st.slider("Prix max (EUR/kg)", 0, 200, 200, 5, key="cat_max_prix")
+
+    filter_key = f"{search_query}|{filter_top}|{filter_no_sweetener}|{filter_france}|{filter_clean}|{filter_type}|{sort_option}|{min_score}|{min_prot}|{max_prix}"
     if st.session_state.get("_cat_filter_key") != filter_key:
         st.session_state._cat_filter_key = filter_key
         st.session_state.cat_page = 0
@@ -1782,6 +1889,18 @@ def render_catalog_results(products):
 
     if filter_type and filter_type != "Tous":
         filtered_df = filtered_df[filtered_df["type_whey"].fillna("unknown").str.lower() == filter_type.lower()]
+
+    if min_score > 0:
+        filtered_df = filtered_df[filtered_df["score_final"].fillna(0) >= min_score]
+
+    if min_prot > 0:
+        filtered_df = filtered_df[filtered_df["proteines_100g"].fillna(0) >= min_prot]
+
+    if max_prix < 200:
+        filtered_df = filtered_df[
+            (filtered_df["prix_par_kg"].fillna(0) <= max_prix) &
+            (filtered_df["prix_par_kg"].fillna(0) > 0)
+        ]
 
     if "score_final" not in filtered_df.columns:
         filtered_df["score_final"] = filtered_df.apply(lambda r: get_score_final_for_row(r), axis=1)
@@ -1963,7 +2082,32 @@ def render_sidebar():
             </div>
             """)
 
+        if user is None:
+            st.markdown("""
+            <div class='sidebar-user'>
+                <div class='sidebar-user-name'>Visiteur</div>
+                <div class='sidebar-user-email'>Mode lecture seule</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            if st.button("Catalogue", use_container_width=True, type="primary" if current_page in ("catalogue", "product") else "secondary", key="nav_catalogue"):
+                st.session_state.page = "catalogue"
+                st.rerun()
+
+            st.markdown("---")
+            if st.button("Se connecter", use_container_width=True, type="primary", key="nav_login_sidebar"):
+                st.session_state.page = "login"
+                st.rerun()
+            if st.button("Creer un compte", use_container_width=True, key="nav_register_sidebar"):
+                st.session_state.page = "register"
+                st.rerun()
+            return
+
         plan_label = "Pro" if user["plan"] == "pro" else "Gratuit"
+
+        notif_count = get_unread_notification_count(user["id"])
+        notif_badge = f" ({notif_count})" if notif_count > 0 else ""
+
         st.markdown(f"""
         <div class='sidebar-user'>
             <div class='sidebar-user-name'><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b95a5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>{html_module.escape(user['display_name'])}</div>
@@ -1983,6 +2127,44 @@ def render_sidebar():
             if st.button(label, use_container_width=True, type="primary" if is_active else "secondary", key=f"nav_{page_id}"):
                 st.session_state.page = page_id
                 st.rerun()
+
+        if notif_count > 0:
+            with st.expander(f"Notifications{notif_badge}"):
+                notifs = get_user_notifications(user["id"], limit=10)
+                for n in notifs:
+                    icon = "🔔" if not n.get("is_read") else "✓"
+                    n_date = n.get("created_at", "")
+                    if hasattr(n_date, "strftime"):
+                        n_date = n_date.strftime("%d/%m %H:%M")
+                    st.markdown(f"**{icon}** {n['message']}")
+                    st.caption(str(n_date))
+                    if n.get("link_product_id"):
+                        if st.button("Voir", key=f"notif_go_{n['id']}", use_container_width=True):
+                            st.session_state.selected_product_id = n["link_product_id"]
+                            st.session_state.page = "product"
+                            mark_notifications_read(user["id"])
+                            st.rerun()
+                if st.button("Tout marquer comme lu", key="mark_all_read", use_container_width=True):
+                    mark_notifications_read(user["id"])
+                    st.rerun()
+
+        with st.expander("Preferences de score"):
+            prefs = get_user_preferences(user["id"])
+            wp = st.slider("Poids Proteines (%)", 0, 100, int(prefs["weight_protein"]), 5, key="pref_protein")
+            wh = st.slider("Poids Sante (%)", 0, 100, int(prefs["weight_health"]), 5, key="pref_health")
+            wpx = st.slider("Poids Prix (%)", 0, 100, int(prefs["weight_price"]), 5, key="pref_price")
+            total_w = wp + wh + wpx
+            if total_w != 100:
+                st.warning(f"Total: {total_w}% (doit etre 100%)")
+            if st.button("Sauvegarder", key="save_prefs", use_container_width=True, disabled=(total_w != 100)):
+                save_user_preferences(user["id"], wp, wh, wpx)
+                st.success("Preferences enregistrees !")
+                st.rerun()
+
+        theme_label = "Mode clair" if st.session_state.theme == "dark" else "Mode sombre"
+        if st.button(theme_label, use_container_width=True, key="toggle_theme"):
+            st.session_state.theme = "light" if st.session_state.theme == "dark" else "dark"
+            st.rerun()
 
         st.markdown("---")
         if st.button("Se deconnecter", use_container_width=True):
@@ -2038,6 +2220,9 @@ def page_landing():
     with col_cta_mid:
         if st.button("Commencer gratuitement", type="primary", use_container_width=True, key="hero_cta"):
             st.session_state.page = "register"
+            st.rerun()
+        if st.button("Voir le catalogue", use_container_width=True, key="hero_browse"):
+            st.session_state.page = "catalogue"
             st.rerun()
         if st.button("Se connecter", use_container_width=False, key="hero_login"):
             st.session_state.page = "login"
@@ -2455,8 +2640,9 @@ def page_compare():
         )
     with col_exp2:
         share_ids = ",".join(str(p["id"]) for p in products)
-        share_text = f"Ma comparaison ProteinScan : {', '.join(p.get('name', '')[:30] for p in products)}"
-        st.text_input("Partager (IDs des produits)", value=share_ids, key="share_ids_input", disabled=True)
+        share_url = f"?compare={share_ids}"
+        st.code(share_url, language=None)
+        st.caption("Copiez ce lien pour partager cette comparaison")
 
 
 # ── PRODUCT DETAIL PAGE ──
@@ -2472,6 +2658,7 @@ def page_product():
             st.session_state.page = "catalogue"
             st.rerun()
         return
+    is_public = user is None
 
     product = cached_get_product_by_id(product_id)
     if not product:
@@ -2556,6 +2743,54 @@ def page_product():
         product.get("has_aspartame", False),
     )
     st.markdown(f"<div style='margin:8px 0 20px 0;'>{whey_badge} {origin_badge} {sweetener_badge}</div>", unsafe_allow_html=True)
+
+    share_col, gallery_col = st.columns([1, 3])
+    with share_col:
+        share_url = f"?product={product_id}"
+        st.code(share_url, language=None)
+        st.caption("Copiez ce lien pour partager ce produit")
+
+    gallery_images = get_product_images(product_id)
+    main_img = product.get("image_url", "")
+    all_imgs = []
+    if main_img:
+        all_imgs.append(main_img)
+    for gi in gallery_images:
+        if gi["image_url"] not in all_imgs:
+            all_imgs.append(gi["image_url"])
+
+    if len(all_imgs) > 1:
+        with gallery_col:
+            st.caption("Galerie produit")
+            img_cols = st.columns(min(len(all_imgs), 5))
+            for i, img_url in enumerate(all_imgs[:5]):
+                with img_cols[i]:
+                    st.markdown(f"<img src='{html_module.escape(img_url)}' style='width:100%;height:80px;object-fit:contain;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);cursor:pointer;' onerror=\"this.style.display='none'\" />", unsafe_allow_html=True)
+
+    if not is_public and user:
+        user_prefs = get_user_preferences(user["id"])
+        wp = user_prefs["weight_protein"]
+        wh = user_prefs["weight_health"]
+        wpx = user_prefs["weight_price"]
+        if wp != 50 or wh != 35 or wpx != 15:
+            score_prot_val = s_prot if is_valid(s_prot) else 5.0
+            score_sante_val = product.get("score_sante") if is_valid(product.get("score_sante")) else 5.0
+            offers_p = cached_get_product_offers(product_id)
+            best_ppk = None
+            for o_p in (offers_p or []):
+                ppk = o_p.get("prix_par_kg")
+                if ppk and (best_ppk is None or ppk < best_ppk):
+                    best_ppk = ppk
+            score_prix_val = calculate_price_score_10(best_ppk) if best_ppk else 5.0
+            personalized = (score_prot_val * wp + score_sante_val * wh + score_prix_val * wpx) / 100.0
+            p_color = score_color_10(personalized)
+            st.markdown(f"""
+            <div style='margin:8px 0;padding:10px 16px;background:rgba(37,99,235,0.08);border-radius:8px;border:1px solid rgba(37,99,235,0.2);'>
+                <span style='color:#8b95a5;font-size:0.85em;'>Votre score personnalise :</span>
+                <span style='font-size:1.3em;font-weight:700;color:{p_color};margin-left:8px;'>{personalized:.1f}/10</span>
+                <span style='color:#8b95a5;font-size:0.75em;margin-left:8px;'>(P:{wp}% S:{wh}% Px:{wpx}%)</span>
+            </div>
+            """, unsafe_allow_html=True)
 
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -2674,16 +2909,62 @@ def page_product():
                 </div>
                 """, unsafe_allow_html=True)
 
-    compare_ids = st.session_state.compare_list
-    if product_id in compare_ids:
-        if st.button("Retirer du comparateur", use_container_width=True, key="prod_remove_compare"):
-            st.session_state.compare_list = [x for x in compare_ids if x != product_id]
-            st.rerun()
-    else:
-        if len(compare_ids) < 5:
-            if st.button("Ajouter au comparateur", type="primary", use_container_width=True, key="prod_add_compare"):
-                st.session_state.compare_list.append(product_id)
+    if not is_public:
+        compare_ids = st.session_state.compare_list
+        if product_id in compare_ids:
+            if st.button("Retirer du comparateur", use_container_width=True, key="prod_remove_compare"):
+                st.session_state.compare_list = [x for x in compare_ids if x != product_id]
                 st.rerun()
+        else:
+            if len(compare_ids) < 5:
+                if st.button("Ajouter au comparateur", type="primary", use_container_width=True, key="prod_add_compare"):
+                    st.session_state.compare_list.append(product_id)
+                    st.rerun()
+
+        price_hist = get_price_history(product_id)
+        if price_hist and len(price_hist) > 1:
+            st.divider()
+            st.subheader("Historique des prix")
+            hist_df = pd.DataFrame(price_hist)
+            hist_df["recorded_at"] = pd.to_datetime(hist_df["recorded_at"])
+            hist_df = hist_df.set_index("recorded_at")
+            st.line_chart(hist_df[["prix_par_kg"]].rename(columns={"prix_par_kg": "Prix/kg (EUR)"}))
+
+        st.divider()
+        offers = cached_get_product_offers(product_id)
+        best_prix_kg = None
+        if offers:
+            for o in offers:
+                ppk = o.get("prix_par_kg")
+                if ppk and (best_prix_kg is None or ppk < best_prix_kg):
+                    best_prix_kg = ppk
+
+        with st.expander("Alerte de prix"):
+            if best_prix_kg:
+                st.caption(f"Prix actuel : {best_prix_kg:.0f} EUR/kg")
+            target = st.number_input("M'alerter quand le prix descend sous (EUR/kg)", min_value=1, max_value=500, value=int(best_prix_kg * 0.9) if best_prix_kg else 50, key="alert_target")
+            if st.button("Creer l'alerte", key="create_alert", use_container_width=True):
+                create_price_alert(user["id"], product_id, float(target))
+                st.success(f"Alerte creee ! Vous serez notifie quand le prix descend sous {target} EUR/kg.")
+
+        user_alerts = get_user_price_alerts(user["id"])
+        product_alerts = [a for a in user_alerts if a["product_id"] == product_id]
+        if product_alerts:
+            st.caption("Vos alertes actives pour ce produit :")
+            for a in product_alerts:
+                ac1, ac2 = st.columns([3, 1])
+                with ac1:
+                    st.markdown(f"Alerte : < {a['target_price']:.0f} EUR/kg")
+                with ac2:
+                    if st.button("Supprimer", key=f"del_alert_{a['id']}"):
+                        delete_price_alert(a["id"], user["id"])
+                        st.rerun()
+    else:
+        st.divider()
+        st.info("Connectez-vous pour comparer, suivre les prix et laisser un avis.")
+        if st.button("Se connecter", type="primary", key="public_product_login"):
+            st.session_state.page = "login"
+            st.rerun()
 
     st.divider()
 
@@ -2706,33 +2987,34 @@ def page_product():
     else:
         st.markdown("<div style='color:#8b95a5;'>Aucun avis pour le moment. Soyez le premier !</div>", unsafe_allow_html=True)
 
-    with st.expander("Ecrire un avis", expanded=count_r == 0):
-        with st.form("review_form"):
-            review_rating = st.slider("Note", 1, 5, 4, key="review_rating")
-            review_title = st.text_input("Titre (optionnel)", key="review_title")
-            review_comment = st.text_area("Commentaire", key="review_comment", placeholder="Partagez votre experience avec ce produit...")
-            review_purchased = st.text_input("Achete sur... (optionnel)", key="review_purchased", placeholder="Ex: nutrimuscle.com")
-            review_submit = st.form_submit_button("Publier mon avis", use_container_width=True)
+    if not is_public:
+        with st.expander("Ecrire un avis", expanded=count_r == 0):
+            with st.form("review_form"):
+                review_rating = st.slider("Note", 1, 5, 4, key="review_rating")
+                review_title = st.text_input("Titre (optionnel)", key="review_title")
+                review_comment = st.text_area("Commentaire", key="review_comment", placeholder="Partagez votre experience avec ce produit...")
+                review_purchased = st.text_input("Achete sur... (optionnel)", key="review_purchased", placeholder="Ex: nutrimuscle.com")
+                review_submit = st.form_submit_button("Publier mon avis", use_container_width=True)
 
-            if review_submit:
-                if not review_comment.strip():
-                    st.error("Veuillez ecrire un commentaire.")
-                else:
-                    result = create_review(
-                        product_id=product_id,
-                        user_id=user["id"],
-                        rating=review_rating,
-                        title=review_title.strip(),
-                        comment=review_comment.strip(),
-                        purchased_from=review_purchased.strip(),
-                    )
-                    if result:
-                        st.success("Avis publie !")
-                        cached_get_reviews.clear()
-                        cached_get_average_rating.clear()
-                        st.rerun()
+                if review_submit:
+                    if not review_comment.strip():
+                        st.error("Veuillez ecrire un commentaire.")
                     else:
-                        st.error("Erreur lors de la publication.")
+                        result = create_review(
+                            product_id=product_id,
+                            user_id=user["id"],
+                            rating=review_rating,
+                            title=review_title.strip(),
+                            comment=review_comment.strip(),
+                            purchased_from=review_purchased.strip(),
+                        )
+                        if result:
+                            st.success("Avis publie !")
+                            cached_get_reviews.clear()
+                            cached_get_average_rating.clear()
+                            st.rerun()
+                        else:
+                            st.error("Erreur lors de la publication.")
 
     reviews = cached_get_reviews(product_id)
     if reviews:
@@ -2775,33 +3057,34 @@ def page_product():
     usage_contexts = ["Musculation", "Endurance", "Perte de poids", "Sante generale", "Recuperation"]
     levels = ["Debutant", "Intermediaire", "Avance", "Tous niveaux"]
 
-    with st.expander("Ecrire une recommandation"):
-        with st.form("reco_form"):
-            reco_context = st.selectbox("Contexte d'utilisation", usage_contexts, key="reco_context")
-            reco_level = st.selectbox("Recommande pour", levels, key="reco_level")
-            reco_pros = st.text_input("Points positifs", key="reco_pros", placeholder="Ex: Bon gout, bonne dissolution...")
-            reco_cons = st.text_input("Points negatifs", key="reco_cons", placeholder="Ex: Prix eleve, texture granuleuse...")
-            reco_comment = st.text_area("Votre recommandation", key="reco_comment", placeholder="Partagez votre experience et pourquoi vous recommandez (ou non) ce produit...")
-            reco_submit = st.form_submit_button("Publier ma recommandation", use_container_width=True)
+    if not is_public:
+        with st.expander("Ecrire une recommandation"):
+            with st.form("reco_form"):
+                reco_context = st.selectbox("Contexte d'utilisation", usage_contexts, key="reco_context")
+                reco_level = st.selectbox("Recommande pour", levels, key="reco_level")
+                reco_pros = st.text_input("Points positifs", key="reco_pros", placeholder="Ex: Bon gout, bonne dissolution...")
+                reco_cons = st.text_input("Points negatifs", key="reco_cons", placeholder="Ex: Prix eleve, texture granuleuse...")
+                reco_comment = st.text_area("Votre recommandation", key="reco_comment", placeholder="Partagez votre experience et pourquoi vous recommandez (ou non) ce produit...")
+                reco_submit = st.form_submit_button("Publier ma recommandation", use_container_width=True)
 
-            if reco_submit:
-                if not reco_comment.strip():
-                    st.error("Veuillez ecrire un commentaire.")
-                else:
-                    result = create_recommendation(
-                        product_id=product_id,
-                        user_id=user["id"],
-                        usage_context=reco_context,
-                        level=reco_level,
-                        pros=reco_pros.strip(),
-                        cons=reco_cons.strip(),
-                        comment=reco_comment.strip(),
-                    )
-                    if result:
-                        st.success("Recommandation publiee !")
-                        st.rerun()
+                if reco_submit:
+                    if not reco_comment.strip():
+                        st.error("Veuillez ecrire un commentaire.")
                     else:
-                        st.error("Erreur lors de la publication.")
+                        result = create_recommendation(
+                            product_id=product_id,
+                            user_id=user["id"],
+                            usage_context=reco_context,
+                            level=reco_level,
+                            pros=reco_pros.strip(),
+                            cons=reco_cons.strip(),
+                            comment=reco_comment.strip(),
+                        )
+                        if result:
+                            st.success("Recommandation publiee !")
+                            st.rerun()
+                        else:
+                            st.error("Erreur lors de la publication.")
 
     recos = get_recommendations_for_product(product_id)
     if recos:
@@ -3406,6 +3689,12 @@ if st.session_state.user is None:
         page_login()
     elif page == "register":
         page_register()
+    elif page == "catalogue":
+        page_catalogue()
+    elif page == "product":
+        page_product()
+    elif page == "compare" and len(st.session_state.compare_list) > 0:
+        page_compare()
     else:
         page_landing()
 else:

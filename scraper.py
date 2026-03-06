@@ -2245,6 +2245,7 @@ def run_reanalysis(progress_callback=None, status_callback=None) -> dict:
 def run_refresh(progress_callback=None, status_callback=None) -> dict:
     from db import get_active_offers, update_offer_price, mark_offer_failed, update_product_image
     from db import create_pipeline_run, update_pipeline_run
+    from db import record_price_snapshot, check_and_trigger_alerts
 
     run_id = create_pipeline_run("refresh")
     stats = {"updated": 0, "failed": 0, "total": 0}
@@ -2273,6 +2274,15 @@ def run_refresh(progress_callback=None, status_callback=None) -> dict:
                 if result.get("image_url") and offer.get("product_id"):
                     try:
                         update_product_image(offer["product_id"], result["image_url"])
+                    except Exception:
+                        pass
+                if offer.get("product_id") and result.get("prix"):
+                    try:
+                        merchant = offer.get("merchant", "")
+                        ppk = result.get("prix_par_kg")
+                        record_price_snapshot(offer["product_id"], result["prix"], ppk, merchant)
+                        if ppk:
+                            check_and_trigger_alerts(offer["product_id"], ppk)
                     except Exception:
                         pass
                 stats["updated"] += 1
