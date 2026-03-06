@@ -1048,7 +1048,7 @@ div.stAlert {
 </style>
 """
 
-CARD_CSS = GLOBAL_CSS
+CARD_CSS = ""
 
 st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
 
@@ -1454,7 +1454,7 @@ def render_product_card_v2(rank, row):
       </div>
     </div>
     """
-    st.html(CARD_CSS + card_html)
+    st.html(card_html)
 
 
 def render_results(products_data, is_dataframe=True):
@@ -1757,7 +1757,7 @@ def render_catalog_card(rank, product):
 
     confidence = product.get("offer_confidence")
     badge_html = get_confidence_badge(confidence)
-    st.html(CARD_CSS + f"<div style='margin-top:-8px;margin-bottom:12px;padding-left:95px;'>{badge_html}</div>")
+    st.html(f"<div style='margin-top:-8px;margin-bottom:12px;padding-left:95px;'>{badge_html}</div>")
 
 
 def render_catalog_results(products):
@@ -1857,6 +1857,11 @@ def render_catalog_results(products):
 
     search_query = st.text_input("🔍 Rechercher un produit (nom ou marque)", key="cat_search_query", placeholder="Ex: myprotein, isolate, native...")
 
+    filter_key = f"{search_query}|{filter_top}|{filter_no_sweetener}|{filter_france}|{filter_clean}|{filter_type}|{sort_option}"
+    if st.session_state.get("_cat_filter_key") != filter_key:
+        st.session_state._cat_filter_key = filter_key
+        st.session_state.cat_page = 0
+
     filtered_df = df.copy()
 
     if search_query:
@@ -1904,13 +1909,45 @@ def render_catalog_results(products):
     else:
         sorted_df = filtered_df
 
-    st.markdown(f"**{len(sorted_df)} produits affiches** sur {len(df)}")
+    PRODUCTS_PER_PAGE = 20
+    total_products = len(sorted_df)
+    total_pages = max(1, (total_products + PRODUCTS_PER_PAGE - 1) // PRODUCTS_PER_PAGE)
 
-    for rank, (idx, row) in enumerate(sorted_df.iterrows(), 1):
+    if "cat_page" not in st.session_state:
+        st.session_state.cat_page = 0
+    current_page = st.session_state.cat_page
+    if current_page >= total_pages:
+        current_page = 0
+        st.session_state.cat_page = 0
+
+    start_idx = current_page * PRODUCTS_PER_PAGE
+    end_idx = min(start_idx + PRODUCTS_PER_PAGE, total_products)
+    page_df = sorted_df.iloc[start_idx:end_idx]
+
+    pcol1, pcol2, pcol3 = st.columns([2, 3, 2])
+    with pcol1:
+        st.markdown(f"**{total_products} produits** — page {current_page + 1}/{total_pages}")
+    with pcol2:
+        nav1, nav2, nav3 = st.columns(3)
+        with nav1:
+            if st.button("◀ Precedent", disabled=(current_page == 0), key="cat_prev", use_container_width=True):
+                st.session_state.cat_page = current_page - 1
+                st.rerun()
+        with nav2:
+            new_page = st.number_input("Page", min_value=1, max_value=total_pages, value=current_page + 1, key="cat_page_input", label_visibility="collapsed")
+            if new_page - 1 != current_page:
+                st.session_state.cat_page = new_page - 1
+                st.rerun()
+        with nav3:
+            if st.button("Suivant ▶", disabled=(current_page >= total_pages - 1), key="cat_next", use_container_width=True):
+                st.session_state.cat_page = current_page + 1
+                st.rerun()
+
+    for rank, (idx, row) in enumerate(page_df.iterrows(), start_idx + 1):
         confidence = row.get("offer_confidence")
         render_product_card_v2(rank, row)
         badge_html = get_confidence_badge(confidence)
-        st.html(CARD_CSS + f"<div style='margin-top:-8px;margin-bottom:4px;padding-left:95px;'>{badge_html}</div>")
+        st.html(f"<div style='margin-top:-8px;margin-bottom:4px;padding-left:95px;'>{badge_html}</div>")
 
         product_id = row.get("product_id") if "product_id" in row.index else None
         if product_id is None and "id" in row.index:
@@ -1990,34 +2027,32 @@ def render_catalog_results(products):
         hide_index=True,
     )
 
-    st.divider()
-    st.subheader("📥 Exporter")
+    with st.expander("📥 Exporter le catalogue"):
+        col_e1, col_e2 = st.columns(2)
+        csv_data = sorted_df.to_csv(index=False, sep=";", encoding="utf-8-sig")
 
-    col_e1, col_e2 = st.columns(2)
-    csv_data = sorted_df.to_csv(index=False, sep=";", encoding="utf-8-sig")
-
-    with col_e1:
-        st.download_button(
-            label="Telecharger CSV",
-            data=csv_data,
-            file_name=f"catalogue_whey_{datetime.now().strftime('%Y%m%d')}.csv",
-            mime="text/csv",
-            use_container_width=True,
-            key="cat_csv_download",
-        )
-
-    with col_e2:
-        excel_path = "/tmp/catalogue_export.xlsx"
-        sorted_df.to_excel(excel_path, index=False, sheet_name="Catalogue")
-        with open(excel_path, "rb") as f:
+        with col_e1:
             st.download_button(
-                label="Telecharger Excel",
-                data=f.read(),
-                file_name=f"catalogue_whey_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                label="Telecharger CSV",
+                data=csv_data,
+                file_name=f"catalogue_whey_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv",
                 use_container_width=True,
-                key="cat_excel_download",
+                key="cat_csv_download",
             )
+
+        with col_e2:
+            excel_path = "/tmp/catalogue_export.xlsx"
+            sorted_df.to_excel(excel_path, index=False, sheet_name="Catalogue")
+            with open(excel_path, "rb") as f:
+                st.download_button(
+                    label="Telecharger Excel",
+                    data=f.read(),
+                    file_name=f"catalogue_whey_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    key="cat_excel_download",
+                )
 
 
 # ── SIDEBAR ──
