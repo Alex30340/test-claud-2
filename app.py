@@ -97,24 +97,39 @@ GLOBAL_CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200');
 
-[data-testid="stExpanderToggleIcon"] {
+span[data-testid="stIconMaterial"],
+[data-icon-type="material"] {
     font-size: 0 !important;
-    width: 20px !important;
-    height: 20px !important;
     overflow: hidden !important;
+    width: 1.2em !important;
+    height: 1.2em !important;
+    display: inline-block !important;
+}
+
+.material-symbols-rounded,
+[class*="material-symbols"] {
+    font-size: 0 !important;
+    overflow: hidden !important;
+}
+
+details summary > span:first-child {
+    font-size: 0 !important;
+    overflow: hidden !important;
+    width: 18px !important;
+    height: 18px !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
 }
-[data-testid="stExpanderToggleIcon"]::before {
+details summary > span:first-child::before {
     content: "▸" !important;
-    font-size: 16px !important;
+    font-size: 14px !important;
     font-family: 'Inter', sans-serif !important;
-    color: inherit !important;
 }
-[data-testid="stExpander"][open] [data-testid="stExpanderToggleIcon"]::before {
+details[open] summary > span:first-child::before {
     content: "▾" !important;
 }
+
 [data-testid="stExpander"] summary span[data-testid="stMarkdownContainer"] p {
     font-family: 'Inter', sans-serif !important;
 }
@@ -1934,7 +1949,8 @@ def render_catalog_results(products):
 
     user_ref = st.session_state.user
     filter_favs = False
-    with st.expander("Filtres avances"):
+    show_adv = st.checkbox("Filtres avances", key="cat_show_adv_filters")
+    if show_adv:
         sl_col1, sl_col2, sl_col3 = st.columns(3)
         with sl_col1:
             min_score = st.slider("Score minimum", 0.0, 10.0, 0.0, 0.5, key="cat_min_score")
@@ -1944,6 +1960,10 @@ def render_catalog_results(products):
             max_prix = st.slider("Prix max (EUR/kg)", 0, 200, 200, 5, key="cat_max_prix")
         if user_ref:
             filter_favs = st.toggle("Mes favoris uniquement", key="cat_filter_favs")
+    else:
+        min_score = 0.0
+        min_prot = 0
+        max_prix = 200
 
     filter_key = f"{search_query}|{filter_top}|{filter_no_sweetener}|{filter_france}|{filter_clean}|{filter_type}|{sort_option}|{min_score}|{min_prot}|{max_prix}|{filter_favs}"
     if st.session_state.get("_cat_filter_key") != filter_key:
@@ -2240,7 +2260,7 @@ def render_sidebar():
                 st.rerun()
 
         if notif_count > 0:
-            with st.expander(f"Notifications{notif_badge}"):
+            if st.checkbox(f"Notifications{notif_badge}", key="show_notifs"):
                 notifs = get_user_notifications(user["id"], limit=10)
                 for n in notifs:
                     icon = "🔔" if not n.get("is_read") else "✓"
@@ -2263,7 +2283,7 @@ def render_sidebar():
         if fav_count > 0:
             st.caption(f"Favoris : {fav_count} produit{'s' if fav_count > 1 else ''}")
 
-        with st.expander("Preferences de score"):
+        if st.checkbox("Preferences de score", key="show_pref_score"):
             prefs = get_user_preferences(user["id"])
             wp = st.slider("Poids Proteines (%)", 0, 100, int(prefs["weight_protein"]), 5, key="pref_protein")
             wh = st.slider("Poids Sante (%)", 0, 100, int(prefs["weight_health"]), 5, key="pref_health")
@@ -2591,7 +2611,7 @@ def page_catalogue():
 
     rv = st.session_state.recently_viewed
     if rv and len(rv) > 1:
-        with st.expander(f"Vus recemment ({len(rv)})"):
+        if st.checkbox(f"Vus recemment ({len(rv)})", key="show_recently_viewed"):
             rv_products = get_products_by_ids(rv[:5])
             rv_cols = st.columns(min(len(rv_products), 5))
             for i, rvp in enumerate(rv_products):
