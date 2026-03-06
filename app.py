@@ -2427,6 +2427,72 @@ def page_landing():
         top5_html += "</div></div>"
         st.html(top5_html)
 
+    st.html("""
+    <style>
+    .guide-section { max-width:880px; margin:0 auto; padding:48px 40px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; }
+    .guide-section h2 { font-size:1.5em; font-weight:700; color:#f0f2f5; text-align:center; margin-bottom:12px; }
+    .guide-section .guide-subtitle { font-size:0.95em; color:#8b95a5; text-align:center; margin-bottom:32px; line-height:1.5; }
+    .guide-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:32px; }
+    .guide-card { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:24px; }
+    .guide-card h3 { font-size:1em; font-weight:600; color:#f0f2f5; margin:0 0 10px 0; }
+    .guide-card p { font-size:0.88em; color:#94a3b8; line-height:1.6; margin:0; }
+    .guide-card .guide-icon { font-size:1.5em; margin-bottom:10px; }
+    .guide-highlight { background:rgba(37,99,235,0.06); border:1px solid rgba(37,99,235,0.15); border-radius:12px; padding:24px; margin-top:8px; }
+    .guide-highlight h3 { font-size:1em; font-weight:600; color:#6ba1eb; margin:0 0 10px 0; }
+    .guide-highlight p { font-size:0.88em; color:#94a3b8; line-height:1.6; margin:0; }
+    .guide-highlight ul { margin:8px 0 0 0; padding-left:20px; }
+    .guide-highlight li { font-size:0.85em; color:#94a3b8; line-height:1.7; }
+    @media (max-width:640px) { .guide-grid { grid-template-columns:1fr; } }
+    </style>
+    <div class="guide-section" id="pourquoi-choisir">
+        <h2>Pourquoi bien choisir sa whey ?</h2>
+        <p class="guide-subtitle">
+            Le prix ne fait pas tout. Deux wheys au meme prix peuvent avoir des compositions radicalement differentes.<br/>
+            Comprendre ce que vous consommez est essentiel pour votre sante et vos resultats.
+        </p>
+        <div class="guide-grid">
+            <div class="guide-card">
+                <div class="guide-icon">&#9878;&#65039;</div>
+                <h3>Ce n'est pas qu'une question de prix</h3>
+                <p>Une whey a 20&#8364;/kg peut contenir plus de sucre, d'additifs et moins de proteines reelles qu'une whey a 35&#8364;/kg.
+                Le prix au kilo ne reflete pas le prix au gramme de proteine reellement assimilable.
+                Certaines marques gonflent artificiellement le taux proteique avec des acides amines libres bon marche.</p>
+            </div>
+            <div class="guide-card">
+                <div class="guide-icon">&#129516;</div>
+                <h3>La qualite des ingredients compte</h3>
+                <p>Edulcorants (sucralose, acesulfame-K), epaississants, aromes artificiels... 
+                Tous les additifs ne se valent pas. Une composition courte et transparente est generalement signe de qualite.
+                Les wheys natives et isolats subissent moins de traitements chimiques.</p>
+            </div>
+            <div class="guide-card">
+                <div class="guide-icon">&#128170;</div>
+                <h3>Les bienfaits d'une bonne whey</h3>
+                <p>Meilleure recuperation musculaire apres l'entrainement. 
+                Apport en acides amines essentiels (BCAA, leucine) pour la synthese proteique.
+                Aide au maintien de la masse musculaire, meme en periode de seche.
+                Complement pratique pour atteindre ses objectifs proteiques quotidiens.</p>
+            </div>
+            <div class="guide-card">
+                <div class="guide-icon">&#127942;</div>
+                <h3>Des resultats concrets</h3>
+                <p>Un profil en acides amines complet (aminogramme) garantit une meilleure assimilation.
+                Un taux de leucine eleve (&gt;10g/100g de prot) favorise la construction musculaire.
+                Un ratio BCAA/proteines eleve indique une proteine de qualite superieure.</p>
+            </div>
+        </div>
+        <div class="guide-highlight">
+            <h3>&#128161; C'est pour ca que ProteinScan existe</h3>
+            <p>Notre algorithme analyse chaque produit sur 3 axes pour vous donner un score objectif :</p>
+            <ul>
+                <li><strong>Score Proteique (50%)</strong> &mdash; Teneur en proteines, profil en acides amines, BCAA, leucine</li>
+                <li><strong>Score Sante (35%)</strong> &mdash; Qualite des ingredients, absence d'edulcorants controverses, composition courte</li>
+                <li><strong>Score Prix (15%)</strong> &mdash; Rapport qualite/prix reel, prix au gramme de proteine</li>
+            </ul>
+        </div>
+    </div>
+    """)
+
     st.markdown("""
     <div class='landing-cards' id='fonctionnalites'>
         <div class='landing-card'>
@@ -2483,9 +2549,12 @@ def page_landing():
     st.markdown("""
     <div class='landing-footer'>
         <p>ProteinScan &copy; 2025 &mdash; Comparateur de proteines whey en France</p>
-        <p><a href='#'>Mentions legales</a> &middot; <a href='#'>CGU</a> &middot; <a href='#'>Contact</a></p>
     </div>
     """, unsafe_allow_html=True)
+
+    if st.button("Mentions legales & Avertissements", key="landing_mentions", type="secondary"):
+        st.session_state.page = "mentions"
+        st.rerun()
 
 
 # ── AUTH PAGES ──
@@ -3947,6 +4016,95 @@ def page_admin():
     st.markdown("</div>", unsafe_allow_html=True)
 
 
+def page_mentions():
+    st.markdown("<div style='max-width:800px;margin:0 auto;'>", unsafe_allow_html=True)
+
+    if st.button("Retour a l'accueil", key="mentions_back"):
+        st.session_state.page = "landing"
+        st.rerun()
+
+    st.html("""
+    <style>
+    .mentions { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; max-width:760px; margin:0 auto; padding:20px 0; }
+    .mentions h1 { font-size:1.6em; font-weight:700; color:#f0f2f5; margin-bottom:32px; }
+    .mentions h2 { font-size:1.15em; font-weight:600; color:#6ba1eb; margin:28px 0 12px 0; padding-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.08); }
+    .mentions p, .mentions li { font-size:0.9em; color:#94a3b8; line-height:1.7; }
+    .mentions ul { padding-left:20px; }
+    .mentions .warn-box { background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.2); border-radius:10px; padding:20px; margin:24px 0; }
+    .mentions .warn-box h3 { font-size:1em; font-weight:600; color:#f59e0b; margin:0 0 10px 0; }
+    .mentions .warn-box p, .mentions .warn-box li { color:#cbd5e1; }
+    </style>
+    <div class="mentions">
+        <h1>Mentions legales & Avertissements</h1>
+
+        <div class="warn-box">
+            <h3>&#9888;&#65039; Avertissement important</h3>
+            <p>ProteinScan est un <strong>outil d'aide a la decision</strong> et non un avis medical ou nutritionnel.
+            Les informations presentees sur ce site sont fournies a titre purement informatif et ne constituent en aucun cas :</p>
+            <ul>
+                <li>Un conseil medical, dietetique ou nutritionnel personnalise</li>
+                <li>Un diagnostic ou un traitement de quelque nature que ce soit</li>
+                <li>Une incitation a consommer ou a ne pas consommer un produit particulier</li>
+                <li>Une verite absolue sur la qualite ou la securite d'un produit</li>
+            </ul>
+            <p><strong>Consultez toujours un professionnel de sante</strong> (medecin, dieteticien, nutritionniste) avant de modifier votre alimentation
+            ou de commencer une supplementation en proteines, en particulier si vous avez des conditions medicales,
+            des allergies alimentaires ou si vous prenez des medicaments.</p>
+        </div>
+
+        <h2>Nature du service</h2>
+        <p>ProteinScan est un comparateur independant de proteines whey commercialisees en France.
+        Le site analyse et compare les produits sur la base de leurs informations nutritionnelles publiques
+        (composition, ingredients, prix) a l'aide d'un algorithme de scoring transparent.</p>
+        <p>Les scores attribues representent une <strong>evaluation algorithmique</strong> basee sur des criteres objectifs
+        (teneur en proteines, profil en acides amines, qualite des ingredients, rapport qualite/prix)
+        et ne constituent pas un jugement de valeur definitif sur un produit ou une marque.</p>
+
+        <h2>Fiabilite des donnees</h2>
+        <p>Les informations affichees (compositions nutritionnelles, prix, ingredients) proviennent de sources publiques
+        (sites marchands, fiches produits en ligne) et sont collectees de maniere automatisee.</p>
+        <ul>
+            <li>Des erreurs d'extraction peuvent survenir malgre nos systemes de verification</li>
+            <li>Les compositions et les prix peuvent evoluer sans que notre base soit immediatement mise a jour</li>
+            <li>Verifiez toujours les informations sur le site officiel du fabricant ou sur l'emballage du produit</li>
+            <li>En cas d'allergie ou d'intolerance, referez-vous exclusivement a l'etiquetage officiel du produit</li>
+        </ul>
+
+        <h2>Independance editoriale</h2>
+        <p>ProteinScan n'est affilie a aucune marque, distributeur ou fabricant de complements alimentaires.
+        Les classements et scores sont generes par notre algorithme sans aucune influence commerciale.
+        Nous ne percevons aucune remuneration des marques listees.</p>
+
+        <h2>Propriete intellectuelle</h2>
+        <p>Les noms de produits, marques et logos mentionnes sur ce site sont la propriete de leurs detenteurs respectifs.
+        Leur utilisation sur ProteinScan est faite a titre informatif dans le cadre de la comparaison de produits.</p>
+
+        <h2>Limitation de responsabilite</h2>
+        <p>ProteinScan ne saurait etre tenu responsable :</p>
+        <ul>
+            <li>Des decisions d'achat prises sur la base des informations presentees</li>
+            <li>D'eventuels effets indesirables lies a la consommation d'un produit reference</li>
+            <li>D'inexactitudes dans les donnees nutritionnelles ou les prix affiches</li>
+            <li>De l'indisponibilite temporaire ou permanente du service</li>
+        </ul>
+
+        <h2>Donnees personnelles</h2>
+        <p>Les donnees collectees (email, preferences) sont utilisees uniquement pour le fonctionnement du service
+        (compte utilisateur, alertes de prix, favoris). Elles ne sont ni vendues ni transmises a des tiers.
+        Vous pouvez demander la suppression de votre compte et de vos donnees a tout moment.</p>
+
+        <h2>Contact</h2>
+        <p>Pour toute question, signalement d'erreur ou demande de suppression de donnees, contactez-nous via l'adresse indiquee dans l'application.</p>
+
+        <p style="margin-top:40px;padding-top:20px;border-top:1px solid rgba(255,255,255,0.08);font-size:0.82em;color:#64748b;">
+        Derniere mise a jour : Mars 2026
+        </p>
+    </div>
+    """)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
 # ── ROUTER ──
 
 render_theme_toggle()
@@ -3964,6 +4122,8 @@ if st.session_state.user is None:
         page_product()
     elif page == "compare":
         page_compare()
+    elif page == "mentions":
+        page_mentions()
     else:
         page_landing()
 else:
@@ -3975,6 +4135,8 @@ else:
         page_product()
     elif page == "admin":
         page_admin()
+    elif page == "mentions":
+        page_mentions()
     elif page in ("login", "register", "landing", "dashboard", "search", "scan"):
         st.session_state.page = "catalogue"
         st.rerun()
