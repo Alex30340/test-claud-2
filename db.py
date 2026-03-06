@@ -1559,6 +1559,97 @@ def get_product_images(product_id: int) -> list[dict]:
         release_connection(conn)
 
 
+def ensure_user_favorites_table():
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS user_favorites (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+                created_at TIMESTAMP DEFAULT NOW(),
+                UNIQUE(user_id, product_id)
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_user_favorites_user ON user_favorites(user_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_user_favorites_product ON user_favorites(product_id)")
+        conn.commit()
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def toggle_favorite(user_id: int, product_id: int) -> bool:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT id FROM user_favorites WHERE user_id = %s AND product_id = %s", (user_id, product_id))
+        existing = cur.fetchone()
+        if existing:
+            cur.execute("DELETE FROM user_favorites WHERE id = %s", (existing[0],))
+            conn.commit()
+            return False
+        else:
+            cur.execute("INSERT INTO user_favorites (user_id, product_id) VALUES (%s, %s)", (user_id, product_id))
+            conn.commit()
+            return True
+    except Exception:
+        conn.rollback()
+        return False
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def is_favorite(user_id: int, product_id: int) -> bool:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT 1 FROM user_favorites WHERE user_id = %s AND product_id = %s", (user_id, product_id))
+        return cur.fetchone() is not None
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def get_user_favorites(user_id: int) -> list[int]:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT product_id FROM user_favorites WHERE user_id = %s ORDER BY created_at DESC", (user_id,))
+        return [r[0] for r in cur.fetchall()]
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def get_user_favorites_count(user_id: int) -> int:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT COUNT(*) FROM user_favorites WHERE user_id = %s", (user_id,))
+        return cur.fetchone()[0]
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def delete_product_image(image_id: int) -> bool:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM product_images WHERE id = %s", (image_id,))
+        conn.commit()
+        return True
+    except Exception:
+        conn.rollback()
+        return False
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
 def get_incomplete_products_for_rescrape(limit: int = 50) -> list:
     conn = get_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)

@@ -22,7 +22,8 @@ from db import (
     get_price_history, create_price_alert, get_user_price_alerts, delete_price_alert,
     get_user_notifications, get_unread_notification_count, mark_notifications_read,
     get_user_preferences, save_user_preferences,
-    ensure_product_images_table, get_product_images, add_product_image,
+    ensure_product_images_table, get_product_images, add_product_image, delete_product_image,
+    ensure_user_favorites_table, toggle_favorite, is_favorite, get_user_favorites, get_user_favorites_count,
 )
 from auth import hash_password, verify_password
 from page_validator import validate_url_debug, is_whey_product_page
@@ -30,6 +31,7 @@ from resolver import resolve_url_debug
 
 init_db()
 ensure_product_images_table()
+ensure_user_favorites_table()
 
 
 @st.cache_data(ttl=300)
@@ -1330,6 +1332,8 @@ for key in ["user", "page", "selected_product_id"]:
         st.session_state[key] = None
 if "compare_list" not in st.session_state:
     st.session_state.compare_list = []
+if "recently_viewed" not in st.session_state:
+    st.session_state.recently_viewed = []
 if "page" not in st.session_state or st.session_state.page is None:
     st.session_state.page = "landing"
 if "theme" not in st.session_state:
@@ -1846,6 +1850,8 @@ def render_catalog_results(products):
 
     search_query = st.text_input("Rechercher un produit (nom ou marque)", key="cat_search_query", placeholder="Ex: myprotein, isolate, native...")
 
+    user_ref = st.session_state.user
+    filter_favs = False
     with st.expander("Filtres avances"):
         sl_col1, sl_col2, sl_col3 = st.columns(3)
         with sl_col1:
@@ -1854,8 +1860,10 @@ def render_catalog_results(products):
             min_prot = st.slider("Proteines min (g/100g)", 0, 95, 0, 5, key="cat_min_prot")
         with sl_col3:
             max_prix = st.slider("Prix max (EUR/kg)", 0, 200, 200, 5, key="cat_max_prix")
+        if user_ref:
+            filter_favs = st.toggle("Mes favoris uniquement", key="cat_filter_favs")
 
-    filter_key = f"{search_query}|{filter_top}|{filter_no_sweetener}|{filter_france}|{filter_clean}|{filter_type}|{sort_option}|{min_score}|{min_prot}|{max_prix}"
+    filter_key = f"{search_query}|{filter_top}|{filter_no_sweetener}|{filter_france}|{filter_clean}|{filter_type}|{sort_option}|{min_score}|{min_prot}|{max_prix}|{filter_favs}"
     if st.session_state.get("_cat_filter_key") != filter_key:
         st.session_state._cat_filter_key = filter_key
         st.session_state.cat_page = 0
@@ -1902,6 +1910,13 @@ def render_catalog_results(products):
             (filtered_df["prix_par_kg"].fillna(0) > 0)
         ]
 
+    if filter_favs and user_ref:
+        fav_ids = get_user_favorites(user_ref["id"])
+        if fav_ids:
+            filtered_df = filtered_df[filtered_df["product_id"].isin(fav_ids)]
+        else:
+            filtered_df = filtered_df.iloc[0:0]
+
     if "score_final" not in filtered_df.columns:
         filtered_df["score_final"] = filtered_df.apply(lambda r: get_score_final_for_row(r), axis=1)
 
@@ -1934,9 +1949,16 @@ def render_catalog_results(products):
     end_idx = min(start_idx + PRODUCTS_PER_PAGE, total_products)
     page_df = sorted_df.iloc[start_idx:end_idx]
 
+    if total_products == 0:
+        st.info("Aucun produit ne correspond a vos criteres. Essayez d'elargir vos filtres ou de modifier votre recherche.")
+        return
+
+    search_info = ""
+    if search_query:
+        search_info = f" pour « {search_query} »"
     pcol1, pcol2, pcol3 = st.columns([2, 3, 2])
     with pcol1:
-        st.markdown(f"**{total_products} produits** — page {current_page + 1}/{total_pages}")
+        st.markdown(f"**{total_products} produit{'s' if total_products > 1 else ''}**{search_info} — page {current_page + 1}/{total_pages}")
     with pcol2:
         nav1, nav2, nav3 = st.columns(3)
         with nav1:
@@ -1961,7 +1983,7 @@ def render_catalog_results(products):
             product_id = row.get("id")
 
         if product_id:
-            btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 4])
+            btn_col1, btn_col2, btn_col3, btn_col4 = st.columns([1, 1, 1, 3])
             with btn_col1:
                 if st.button("Voir fiche", key=f"cat_view_{product_id}_{rank}", use_container_width=True):
                     st.session_state.selected_product_id = int(product_id)
@@ -1976,6 +1998,13 @@ def render_catalog_results(products):
                 elif len(compare_ids) < 5:
                     if st.button("+ Comparer", key=f"cat_addcmp_{product_id}_{rank}", use_container_width=True):
                         st.session_state.compare_list.append(int(product_id))
+                        st.rerun()
+            with btn_col3:
+                if user_ref:
+                    fav = is_favorite(user_ref["id"], int(product_id))
+                    fav_label = "Retirer favori" if fav else "Favori"
+                    if st.button(fav_label, key=f"cat_fav_{product_id}_{rank}", use_container_width=True):
+                        toggle_favorite(user_ref["id"], int(product_id))
                         st.rerun()
 
     if st.session_state.compare_list:
@@ -2147,6 +2176,10 @@ def render_sidebar():
                 if st.button("Tout marquer comme lu", key="mark_all_read", use_container_width=True):
                     mark_notifications_read(user["id"])
                     st.rerun()
+
+        fav_count = get_user_favorites_count(user["id"])
+        if fav_count > 0:
+            st.caption(f"Favoris : {fav_count} produit{'s' if fav_count > 1 else ''}")
 
         with st.expander("Preferences de score"):
             prefs = get_user_preferences(user["id"])
@@ -2469,6 +2502,25 @@ def page_catalogue():
         st.info("Aucun produit dans le catalogue pour le moment.")
         return
 
+    rv = st.session_state.recently_viewed
+    if rv and len(rv) > 1:
+        with st.expander(f"Vus recemment ({len(rv)})"):
+            rv_products = get_products_by_ids(rv[:5])
+            rv_cols = st.columns(min(len(rv_products), 5))
+            for i, rvp in enumerate(rv_products):
+                with rv_cols[i]:
+                    rv_name = rvp.get("name", "")[:30]
+                    rv_score = rvp.get("score_final")
+                    rv_img = rvp.get("image_url", "")
+                    if rv_img:
+                        st.markdown(f"<img src='{html_module.escape(rv_img)}' style='width:60px;height:60px;object-fit:contain;border-radius:6px;background:rgba(255,255,255,0.04);' onerror=\"this.style.display='none'\" />", unsafe_allow_html=True)
+                    sc_txt = f"{rv_score:.1f}" if rv_score else "N/A"
+                    st.markdown(f"**{sc_txt}** {html_module.escape(rv_name)}")
+                    if st.button("Voir", key=f"rv_{rvp['id']}", use_container_width=True):
+                        st.session_state.selected_product_id = rvp["id"]
+                        st.session_state.page = "product"
+                        st.rerun()
+
     render_catalog_results(scored_products)
 
 
@@ -2668,6 +2720,15 @@ def page_product():
             st.rerun()
         return
 
+    rv = st.session_state.recently_viewed
+    if product_id not in rv:
+        rv.insert(0, product_id)
+        st.session_state.recently_viewed = rv[:10]
+    elif rv[0] != product_id:
+        rv.remove(product_id)
+        rv.insert(0, product_id)
+        st.session_state.recently_viewed = rv[:10]
+
     if st.button("Retour au catalogue"):
         st.session_state.page = "catalogue"
         st.rerun()
@@ -2744,11 +2805,18 @@ def page_product():
     )
     st.markdown(f"<div style='margin:8px 0 20px 0;'>{whey_badge} {origin_badge} {sweetener_badge}</div>", unsafe_allow_html=True)
 
-    share_col, gallery_col = st.columns([1, 3])
+    share_col, fav_col, gallery_col = st.columns([1, 1, 2])
     with share_col:
         share_url = f"?product={product_id}"
         st.code(share_url, language=None)
-        st.caption("Copiez ce lien pour partager ce produit")
+        st.caption("Copiez ce lien pour partager")
+    with fav_col:
+        if not is_public and user:
+            fav_status = is_favorite(user["id"], product_id)
+            fav_btn_label = "Retirer des favoris" if fav_status else "Ajouter aux favoris"
+            if st.button(fav_btn_label, key="prod_fav_toggle", use_container_width=True):
+                toggle_favorite(user["id"], product_id)
+                st.rerun()
 
     gallery_images = get_product_images(product_id)
     main_img = product.get("image_url", "")
@@ -3536,6 +3604,44 @@ def page_admin():
 
     st.markdown("")
 
+    st.markdown("<div class='admin-section'><div class='admin-section-title'>Gestion des images produit</div><div class='admin-section-desc'>Ajoutez ou supprimez des images de la galerie produit.</div>", unsafe_allow_html=True)
+
+    img_product_search = st.text_input("Rechercher un produit par nom", key="admin_img_search", placeholder="Ex: myprotein impact whey...")
+    if img_product_search:
+        all_prods = cached_get_all_products(limit=300)
+        q_lower = img_product_search.lower()
+        matching = [p for p in all_prods if q_lower in (p.get("name", "") or "").lower() or q_lower in (p.get("brand", "") or "").lower()][:10]
+        if matching:
+            prod_options = {f"{p['name']} ({p.get('brand', '')}) [ID:{p['id']}]": p['id'] for p in matching}
+            selected_prod_label = st.selectbox("Selectionner le produit", list(prod_options.keys()), key="admin_img_product")
+            selected_prod_id = prod_options[selected_prod_label]
+
+            existing_images = get_product_images(selected_prod_id)
+            if existing_images:
+                st.caption(f"{len(existing_images)} image(s) dans la galerie :")
+                img_del_cols = st.columns(min(len(existing_images), 5))
+                for ei, eimg in enumerate(existing_images[:5]):
+                    with img_del_cols[ei]:
+                        st.markdown(f"<img src='{html_module.escape(eimg['image_url'])}' style='width:80px;height:80px;object-fit:contain;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);' onerror=\"this.style.display='none'\" />", unsafe_allow_html=True)
+                        if st.button("Supprimer", key=f"admin_del_img_{eimg['id']}", use_container_width=True):
+                            delete_product_image(eimg["id"])
+                            st.rerun()
+
+            new_img_url = st.text_input("URL de la nouvelle image", key="admin_new_img_url", placeholder="https://...")
+            if st.button("Ajouter cette image", key="admin_add_img", use_container_width=True):
+                if new_img_url and new_img_url.startswith("http"):
+                    add_product_image(selected_prod_id, new_img_url)
+                    st.success("Image ajoutee !")
+                    st.rerun()
+                else:
+                    st.warning("URL invalide.")
+        else:
+            st.info("Aucun produit trouve.")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("")
+
     st.markdown("<div class='admin-section'><div class='admin-section-title'>Debug : Validateur de page</div><div class='admin-section-desc'>Testez si une URL sera acceptee ou rejetee par le validateur strict.</div>", unsafe_allow_html=True)
 
     debug_url = st.text_input("URL a tester", placeholder="https://example.fr/produit/whey-isolate-1kg", key="debug_url")
@@ -3693,7 +3799,7 @@ if st.session_state.user is None:
         page_catalogue()
     elif page == "product":
         page_product()
-    elif page == "compare" and len(st.session_state.compare_list) > 0:
+    elif page == "compare":
         page_compare()
     else:
         page_landing()

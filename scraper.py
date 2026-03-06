@@ -1467,6 +1467,9 @@ def extract_product_data(url: str, force_browser: bool = False) -> dict | None:
                     result["_used_browser"] = True
                     logger.info(f"[SCRAPER] Browser retry completed for {url}")
 
+        if browser_images:
+            result["_gallery_images"] = browser_images[:10]
+
         return result
 
     except Exception as e:
@@ -1733,6 +1736,7 @@ def run_discovery(api_key: str, progress_callback=None, status_callback=None,
                   use_whey_filter: bool = True,
                   use_resolver: bool = True) -> dict:
     from db import upsert_product, upsert_offer, create_pipeline_run, update_pipeline_run
+    from db import add_product_image
 
     run_id = create_pipeline_run("discovery")
     effective_block = block_domains if block_domains is not None else BLOCK_DOMAINS
@@ -1826,6 +1830,13 @@ def run_discovery(api_key: str, progress_callback=None, status_callback=None,
 
                     product_id = upsert_product(product_data)
                     upsert_offer(product_id, offer_data)
+
+                    gallery = result.get("_gallery_images", [])
+                    for gi, img_url in enumerate(gallery):
+                        try:
+                            add_product_image(product_id, img_url, sort_order=gi)
+                        except Exception:
+                            pass
 
                     stats["products_found"] += 1
                     stats["offers_created"] += 1
