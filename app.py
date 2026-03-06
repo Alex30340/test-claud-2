@@ -97,6 +97,24 @@ GLOBAL_CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200');
 
+[data-testid="stExpanderToggleIcon"] {
+    font-size: 0 !important;
+    width: 20px !important;
+    height: 20px !important;
+    overflow: hidden !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+[data-testid="stExpanderToggleIcon"]::before {
+    content: "▸" !important;
+    font-size: 16px !important;
+    font-family: 'Inter', sans-serif !important;
+    color: inherit !important;
+}
+[data-testid="stExpander"][open] [data-testid="stExpanderToggleIcon"]::before {
+    content: "▾" !important;
+}
 [data-testid="stExpander"] summary span[data-testid="stMarkdownContainer"] p {
     font-family: 'Inter', sans-serif !important;
 }

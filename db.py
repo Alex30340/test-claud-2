@@ -376,6 +376,30 @@ def init_db():
     _seed_if_empty()
 
 
+def _update_missing_images(conn, cur, seed_products):
+    try:
+        cur.execute("SELECT id, name FROM products WHERE image_url IS NULL OR image_url = ''")
+        missing = cur.fetchall()
+        if not missing:
+            return
+        seed_by_name = {}
+        for sp in seed_products:
+            if sp.get("image_url"):
+                seed_by_name[sp.get("name", "")] = sp["image_url"]
+        updated = 0
+        for pid, pname in missing:
+            img = seed_by_name.get(pname)
+            if img:
+                cur.execute("UPDATE products SET image_url = %s WHERE id = %s", (img, pid))
+                updated += 1
+        if updated > 0:
+            conn.commit()
+            logger.info(f"[SEED] Updated {updated} product images")
+    except Exception as e:
+        conn.rollback()
+        logger.warning(f"[SEED] Image update error: {e}")
+
+
 def _seed_if_empty():
     import json, os
     seed_path = os.path.join(os.path.dirname(__file__), "seed_data.json")
@@ -387,16 +411,18 @@ def _seed_if_empty():
     try:
         cur.execute("SELECT COUNT(*) FROM products")
         count = cur.fetchone()[0]
-        if count >= 10:
-            cur.close()
-            release_connection(conn)
-            return
 
         with open(seed_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
         products = data.get("products", [])
         offers = data.get("offers", [])
+
+        if count >= 10:
+            _update_missing_images(conn, cur, products)
+            cur.close()
+            release_connection(conn)
+            return
 
         if not products:
             cur.close()
