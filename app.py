@@ -1359,8 +1359,18 @@ hr { border-color: #e2e8f0 !important; }
 .login-subtitle { color: #475569 !important; }
 [data-testid="stNumberInput"] span,
 [data-testid="stSlider"] span { color: #334155 !important; }
+div[data-testid="stSlider"] > div > div { color: #2563eb !important; }
+div[data-testid="stSlider"] [data-testid="stThumbValue"] { color: #1a202c !important; }
+div[data-testid="stSlider"] [data-testid="stTickBarMin"],
+div[data-testid="stSlider"] [data-testid="stTickBarMax"] { color: #64748b !important; }
+.stDownloadButton > button { background: #ffffff !important; border: 1px solid #e2e8f0 !important; color: #2563eb !important; }
+.stDownloadButton > button:hover { background: #f1f5f9 !important; }
+.stToggle label span { color: #334155 !important; }
+[data-testid="stCheckbox"] label span { color: #334155 !important; }
 .stDataFrame { border: 1px solid #e2e8f0 !important; }
 div[data-testid="stToast"] { background: #ffffff !important; border: 1px solid #e2e8f0 !important; color: #334155 !important; }
+.stAlert { color: #334155 !important; }
+[data-testid="stNotification"] p { color: #334155 !important; }
 </style>
 """
 
