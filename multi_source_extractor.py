@@ -390,6 +390,8 @@ def _extract_from_table(table, soup_url: str = "") -> list[NutritionEvidence]:
                 per100g_col = i
         elif re.search(r"(dose|portion|serving|scoop)", ct):
             serving_col = i
+        elif re.search(r"(pour|per|par)\s+\d+[\.,]?\d*\s*g(?!\s*(de\s+prot|d.acide))", ct) and per100g_col is None:
+            serving_col = i
 
     context_text = full_header_text
     for sibling_list in [table.previous_siblings, table.next_siblings]:
@@ -417,15 +419,62 @@ def _extract_from_table(table, soup_url: str = "") -> list[NutritionEvidence]:
         elif per100g_col is not None:
             amino_base = "per_100g"
 
-    seen_fields = set()
+    serving_size_g = None
+    only_serving = serving_col is not None and per100g_col is None and per100g_prot_col is None
+    if only_serving:
+        for cell in header_cells:
+            ct = cell.get_text(strip=True).lower()
+            m = re.search(r"(?:pour|per|par|valeurs?\s+pour)\s+(\d+[\.,]?\d*)\s*g", ct)
+            if m:
+                sv = _parse_num(m.group(1))
+                if sv and sv != 100:
+                    serving_size_g = sv
+                    break
+        if not serving_size_g:
+            m = re.search(r"(\d+)\s*g\s*\(", header_text)
+            if m:
+                sv = _parse_num(m.group(1))
+                if sv and sv != 100:
+                    serving_size_g = sv
 
-    for row in rows[1:]:
+    seen_fields = set()
+    row_list = rows[1:]
+
+    for row_idx, row in enumerate(row_list):
         cells = row.find_all(["td", "th"])
         if len(cells) < 2:
-            continue
+            if len(cells) == 1:
+                label = cells[0].get_text(strip=True)
+                field, ftype = _match_field(label)
+                if field and field not in seen_fields and row_idx + 1 < len(row_list):
+                    next_cells = row_list[row_idx + 1].find_all(["td", "th"])
+                    if next_cells:
+                        for nc in next_cells:
+                            nc_text = nc.get_text(strip=True)
+                            nc_val = _parse_num(nc_text)
+                            if nc_val is not None:
+                                cells = next_cells
+                                break
+                if len(cells) < 2:
+                    continue
+            else:
+                continue
 
         label = cells[0].get_text(strip=True)
         field, ftype = _match_field(label)
+
+        if field and ftype == "nutrition" and len(cells) >= 2:
+            all_vals_none = all(_parse_num(cells[c].get_text(strip=True)) is None for c in range(1, len(cells)))
+            if all_vals_none and row_idx + 1 < len(row_list):
+                next_cells = row_list[row_idx + 1].find_all(["td", "th"])
+                if len(next_cells) >= 2:
+                    next_label = next_cells[0].get_text(strip=True).lower()
+                    if re.match(r'\(n[=\s]', next_label) or not _match_field(next_label)[0]:
+                        cells = next_cells
+
+        if not field:
+            label = cells[0].get_text(strip=True)
+            field, ftype = _match_field(label)
         if not field:
             continue
 
@@ -446,9 +495,22 @@ def _extract_from_table(table, soup_url: str = "") -> list[NutritionEvidence]:
         unit = _detect_unit(cell_text)
 
         if val is None:
+            for ci in range(len(cells) - 1, 0, -1):
+                alt_text = cells[ci].get_text(strip=True)
+                alt_val = _parse_num(alt_text)
+                if alt_val is not None:
+                    cell_text = alt_text
+                    val = alt_val
+                    unit = _detect_unit(alt_text)
+                    break
+
+        if val is None:
             continue
 
         normalized = _normalize_value(val, unit)
+
+        if only_serving and serving_size_g and serving_size_g > 0 and ftype == "nutrition":
+            normalized = round(normalized * 100.0 / serving_size_g, 2)
 
         if ftype == "amino" and (normalized < 0.01 or normalized > 50):
             continue
@@ -459,6 +521,8 @@ def _extract_from_table(table, soup_url: str = "") -> list[NutritionEvidence]:
                 continue
 
         conf = 0.9 if per100g_col is not None else 0.7
+        if only_serving and serving_size_g:
+            conf = 0.65
         if ftype == "amino":
             if per100g_prot_col is not None or per100g_col is not None or is_amino_table:
                 conf = 0.85
