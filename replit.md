@@ -24,15 +24,14 @@ The user prefers clear, concise communication. They value iterative development 
     3.  **Regex Fallback**: HTML pattern matching for prices, ingredients, and nutritional information.
     4.  **Advanced Nutrition Extraction**: Utilizes a pipeline combining structured data, HTML tables, and OCR (GPT-4o vision) for comprehensive macro and aminogram analysis.
 - **Strict Product Page Validation**: A `page_validator.py` module ensures that scraped URLs correspond to actual product pages with purchase proof, filtering out blogs, articles, and irrelevant content.
-- **Curated Catalog**: Only products with complete data (protein, BCAA, score) are displayed. Quality threshold: `score_final IS NOT NULL`.
+- **Curated Catalog**: Only products with complete data (protein, BCAA, score) are displayed. Quality threshold: `score_final IS NOT NULL`. Catalog cleaned from ~108 to ~66 scored products after deduplication.
 - **UI/UX**: Simplified 3-page navigation for authenticated users:
-    -   **Catalogue** (default): Searchable product list with filters (type whey, sort, toggles), pagination (20/page), product cards with scores.
-    -   **Comparateur**: Side-by-side comparison of up to 5 products.
+    -   **Catalogue** (default): Searchable product list with filters (type whey, sort, toggles), pagination (20/page), product cards with scores. Export buttons (CSV/Excel) visible directly below the table.
+    -   **Comparateur**: Side-by-side comparison of up to 5 products. Pre-filled suggestions when empty (Top 3 Isolate/Native, Meilleur rapport qualite/prix, Top 3 sans edulcorant). Export comparison to CSV + share IDs.
     -   **Administration**: Pipeline controls, data quality dashboard, catalog management.
-    -   Public pages: Landing, Login, Register.
-    -   Sub-pages: Product Detail (from catalogue).
+    -   Public pages: Landing (with Top 5 products preview), Login, Register.
+    -   Sub-pages: Product Detail (from catalogue) with nutrition table, aminogram, reviews, and community recommendations.
     -   Visual scoring (1-10 scale, star ratings), detailed product cards with protein, health, price scores, BCAA/leucine metrics, badges.
-    -   Removed: Dashboard, Scan/Search pages (discovery now admin-only).
 
 ### Key Features
 - **Scoring System (V3)**:
@@ -42,24 +41,31 @@ The user prefers clear, concise communication. They value iterative development 
     -   **Final Score**: Weighted average of the three main scores, with optional premium bonuses (e.g., high protein content, full aminogram, French origin).
 - **Product Detection**: Automated identification of whey type (Native, Isolate, Hydrolysate, Concentrate), French manufacturing, origin, and presence of specific additives (sweeteners, flavors, thickeners, colorants). Whey type detection prioritizes product name (with whey/protein context check) over page text; page text fallback requires 2+ keyword hits or contextual proximity to whey-related terms to avoid false positives. Protein validation threshold: values <15g/100g rejected, >=96g rejected as suspect. Per-serving values (typically 15-35g) are filtered out.
 - **Multi-Source Nutrition Extraction** (integrated in scraper.py):
-    - Source A: Structured data (JSON-LD nutrition, additionalProperty) → confidence 0.85-0.9
-    - Source B: HTML tables and div sections → confidence 0.65-0.9
-    - Source C: OCR via GPT-4o vision on nutrition label images → confidence 0.55-0.65, triggered only when protein/kcal/aminogram missing
+    - Source A: Structured data (JSON-LD nutrition, additionalProperty) -> confidence 0.85-0.9
+    - Source B: HTML tables and div sections -> confidence 0.65-0.9
+    - Source C: OCR via GPT-4o vision on nutrition label images -> confidence 0.55-0.65, triggered only when protein/kcal/aminogram missing
     - Fusion engine picks highest-confidence source per field, cross-checks macro coherence (kcal vs P+C+F)
-    - `_match_field` uses longest-match-wins to prevent alias conflicts (e.g., "isoleucine" vs "leucine")
-    - `_extract_from_table` deduplicates fields (seen_fields set), prefers "pour 100g de protéine" column for amino, scans context (siblings, parent headings) for amino_base detection
-    - `_extract_from_div_sections` has sanity bounds (amino 0.01-50g, nutrition 0-100g, kcal 50-800) and max text length filters to prevent false positives
-    - `_compute_bcaa_per_100g_prot` in scraper.py: smart inference for unknown amino_base using value range heuristics
-    - Re-analysis pipeline recalculates protein/health/global/final scores after updating nutrition data
-    - Extended DB columns: carbs_per_100g, sugar_per_100g, fat_per_100g, sat_fat_per_100g, kcal_per_100g, salt_per_100g, fiber_per_100g, amino_profile (JSONB), amino_base, raw_evidence (JSONB), nutrition_sources, macro_coherent, glutamine_g, arginine_g, lysine_g
-- **Aminogram Extraction**: Full 18 amino acid profile (Leucine, Isoleucine, Valine, Glutamine, Arginine, Lysine, Methionine, Phenylalanine, Threonine, Tryptophan, Histidine, Alanine, Glycine, Proline, Serine, Tyrosine, Aspartic acid, Cysteine) with base detection (per_100g_protein/per_100g/per_serving).
-- **JavaScript Render Detection**: Identifies pages requiring JavaScript rendering and adjusts confidence scores accordingly.
-- **Performance**: Utilizes `ThreadPoolExecutor` for parallel extraction and includes delays/timeouts for external API calls and HTTP requests.
+- **Aminogram Extraction**: Full 18 amino acid profile with base detection (per_100g_protein/per_100g/per_serving).
+- **Nutrition Table**: Product detail page displays a styled HTML nutrition table (pour 100g) with energy, protein (highlighted), carbs, sugars, fat, sat fat, fiber, salt.
+- **Community Recommendations**: Users can write recommendations with usage context (Musculation, Endurance, Perte de poids, Sante generale, Recuperation), level (Debutant, Intermediaire, Avance, Tous niveaux), pros/cons, and comment. Displayed grouped by usage context on the product detail page.
+- **Landing Page Top 5**: Public landing page shows the top 5 products by score_final with score, name, brand, and protein content. No login required.
+- **Comparator Suggestions**: When comparator is empty, 3 pre-made comparisons are offered as clickable cards.
+- **Export UX**: CSV/Excel export buttons are directly visible below the catalog table (no expander). Comparator has a dedicated CSV export button.
 - **Database Performance**:
     - Connection pooling via `psycopg2.pool.ThreadedConnectionPool` (2-10 connections). Use `get_connection()` / `release_connection(conn)` pattern.
-    - 7 database indexes on frequently queried columns (offers.product_id, reviews.product_id, products.score_final, etc.)
-    - Streamlit `@st.cache_data` wrappers (TTL 30-60s) for catalog, product, offers, reviews queries — prefixed `cached_*`
+    - 8 database indexes (offers.product_id, reviews.product_id, products.score_final, recommendations.product_id, etc.)
+    - Streamlit `@st.cache_data` wrappers: catalog TTL 300s, product/offers TTL 120s, reviews TTL 30s, stats TTL 300s
     - Catalog query selects only needed columns (excludes amino_profile, raw_evidence, ingredients JSONB)
+
+## Database Tables
+- **users**: id, email, display_name, password_hash, role, plan, created_at
+- **products**: id, name, brand, proteines_100g, type_whey, score_final, score_proteique, score_sante, score_global, image_url, ingredients, ingredient_count, amino_profile (JSONB), kcal_per_100g, carbs_per_100g, sugar_per_100g, fat_per_100g, sat_fat_per_100g, salt_per_100g, fiber_per_100g, bcaa_per_100g_prot, leucine_g, isoleucine_g, valine_g, origin_label, made_in_france, has_sucralose, has_acesulfame_k, has_aspartame, has_artificial_flavors, has_thickeners, has_colorants, has_aminogram, mentions_bcaa, amino_base, raw_evidence (JSONB), nutrition_sources, macro_coherent, profil_suspect, protein_suspect
+- **offers**: id, product_id (FK), url, merchant, prix, poids_kg, prix_par_kg, confidence, is_active, needs_js_render, fail_count, created_at, updated_at
+- **reviews**: id, product_id (FK), user_id (FK), rating, title, comment, purchased_from, is_flagged, is_hidden, created_at
+- **recommendations**: id, product_id (FK), user_id (FK), usage_context, level, pros, cons, comment, is_hidden, created_at
+- **scans**: id, user_id (FK), query, status, details, created_at
+- **scan_items**: id, scan_id (FK), product_id (FK), created_at
+- **pipeline_runs**: id, pipeline_type, status, products_found, products_added, details, created_at
 
 ## External Dependencies
 -   `streamlit`: Main framework for the web application UI.
@@ -74,10 +80,9 @@ The user prefers clear, concise communication. They value iterative development 
 -   **PostgreSQL**: Primary database for storing user accounts, product data, offers, and pipeline run history.
 -   **Brave Search API**: Used for the Discovery pipeline to find new product URLs. (Requires `BRAVE_SEARCH_API_KEY` secret).
 -   `openai`: OpenAI client for GPT-4o vision OCR (via Replit AI Integrations, no API key needed).
--   **GPT-4o Vision (via `multi_source_extractor.py`)**: OCR-based nutrition/aminogram extraction from product label images. Triggered when protein/kcal/amino data is missing from HTML sources.
 
 ## Admin Features
-- **Discovery Pipeline**: Brave Search → scrape → validate → score → upsert products/offers
+- **Discovery Pipeline**: Brave Search -> scrape -> validate -> score -> upsert products/offers
 - **Refresh Pipeline**: Re-scrape active offers for price/availability updates
 - **Re-analysis Pipeline**: Re-scrape existing products to populate extended nutrition fields (aminogram, macros) using multi_source_extractor. Targets products where amino_profile IS NULL or kcal_per_100g IS NULL.
 - **Data Quality Dashboard**: Admin section showing catalog completeness (protein, ingredients, score, image, BCAA coverage) with breakdown by missing field and list of incomplete products.
@@ -87,12 +92,12 @@ The user prefers clear, concise communication. They value iterative development 
 ## Browser Scraper Architecture (`browser_scraper.py`)
 - **Playwright Integration**: Headless Chromium for JS-heavy sites. Requires `LD_LIBRARY_PATH` pointing to mesa libgbm (`/nix/store/.../mesa-libgbm-.../lib`).
 - **Cookie Dismissal**: Auto-clicks common GDPR/cookie banners (Accepter, Accept all, J'accepte, etc.)
-- **Accordion/Tab Expansion**: Clicks elements matching nutrition keywords (composition, ingrédients, valeurs nutritionnelles, aminogramme, voir plus, etc.) to reveal hidden content.
+- **Accordion/Tab Expansion**: Clicks elements matching nutrition keywords (composition, ingredients, valeurs nutritionnelles, aminogramme, voir plus, etc.) to reveal hidden content.
 - **Lazy-load Scroll**: Scrolls page to trigger lazy-loaded images.
 - **Carousel Image Extraction**: Collects images from product galleries, carousels, sliders; clicks thumbnails to reveal hidden images. Returns up to 30 filtered images.
 - **Integration**: `extract_product_data(url, force_browser=True)` uses browser; auto-retries with browser when `needs_js` detected and critical data missing. Browser images are scored and top 5 added as OCR candidates.
 
 ## Data Quality Architecture
 - **Smart Upsert (`upsert_product`)**: When updating existing products, fields in the `preserve_fields` set are never overwritten with None/empty values. This prevents re-scrapes from erasing previously extracted data.
-- **Image Extraction Fallbacks**: `_extract_product_image_fallback()` checks: product:image meta → image_src link → CSS selectors (.product-image, .product-gallery, etc.) → itemprop=image → main content large images (>80px).
+- **Image Extraction Fallbacks**: `_extract_product_image_fallback()` checks: product:image meta -> image_src link -> CSS selectors (.product-image, .product-gallery, etc.) -> itemprop=image -> main content large images (>80px).
 - **Ingredients Extraction**: `find_ingredients_block_html()` searches expanded heading patterns (7 patterns incl. "du produit", "nutritionnelle", "what's in it"), then class-based search, then itemprop. Text fallback uses 4 regex patterns.

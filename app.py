@@ -1045,6 +1045,199 @@ div.stAlert {
     color: rgba(255,255,255,0.1);
     flex-shrink: 0;
 }
+
+.landing-top5 {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 40px 40px 20px 40px;
+}
+@media (max-width: 768px) {
+    .landing-top5 { padding: 24px 16px; }
+}
+.landing-top5 h2 {
+    font-size: 1.4em;
+    font-weight: 700;
+    color: #f0f2f5;
+    text-align: center;
+    margin-bottom: 24px;
+}
+.landing-top5-grid {
+    display: flex;
+    gap: 14px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+.landing-top5-card {
+    flex: 1;
+    min-width: 150px;
+    max-width: 170px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    padding: 18px 14px;
+    text-align: center;
+}
+.landing-top5-card:hover {
+    border-color: rgba(255,255,255,0.12);
+}
+.landing-top5-rank {
+    font-size: 0.7em;
+    font-weight: 700;
+    color: #f59e0b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+}
+.landing-top5-score {
+    font-size: 1.5em;
+    font-weight: 800;
+    margin-bottom: 6px;
+}
+.landing-top5-name {
+    font-size: 0.82em;
+    font-weight: 600;
+    color: #f0f2f5;
+    line-height: 1.3;
+    margin-bottom: 4px;
+}
+.landing-top5-brand {
+    font-size: 0.72em;
+    color: #8b95a5;
+}
+.landing-top5-prot {
+    font-size: 0.72em;
+    color: #6ba1eb;
+    margin-top: 6px;
+}
+
+.nutrition-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+}
+.nutrition-table th {
+    text-align: left;
+    padding: 10px 14px;
+    background: rgba(37, 99, 235, 0.08);
+    color: #6ba1eb;
+    font-size: 0.82em;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 2px solid rgba(255,255,255,0.08);
+}
+.nutrition-table td {
+    padding: 9px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    font-size: 0.88em;
+    color: #c0c8d4;
+}
+.nutrition-table tr:hover td {
+    background: rgba(255,255,255,0.02);
+}
+.nutrition-table .nt-label {
+    font-weight: 500;
+    color: #f0f2f5;
+}
+.nutrition-table .nt-sub {
+    padding-left: 28px;
+    font-size: 0.82em;
+    color: #8b95a5;
+}
+.nutrition-table .nt-value {
+    text-align: right;
+    font-weight: 600;
+    color: #f0f2f5;
+    font-variant-numeric: tabular-nums;
+}
+.nutrition-table .nt-highlight td {
+    background: rgba(37, 99, 235, 0.04);
+}
+.nutrition-table .nt-highlight .nt-label {
+    color: #6ba1eb;
+    font-weight: 700;
+}
+
+.reco-card {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    padding: 18px 20px;
+    margin-bottom: 12px;
+}
+.reco-card:hover {
+    border-color: rgba(255,255,255,0.1);
+}
+.reco-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+.reco-author {
+    font-weight: 600;
+    color: #f0f2f5;
+    font-size: 0.9em;
+}
+.reco-date {
+    color: #555e6e;
+    font-size: 0.78em;
+}
+.reco-badges {
+    margin-bottom: 8px;
+}
+.reco-pros-cons {
+    display: flex;
+    gap: 16px;
+    margin: 8px 0;
+    flex-wrap: wrap;
+}
+.reco-pros, .reco-cons {
+    flex: 1;
+    min-width: 140px;
+    font-size: 0.85em;
+    line-height: 1.6;
+}
+.reco-pros-title {
+    color: #34d399;
+    font-weight: 600;
+    font-size: 0.8em;
+    margin-bottom: 2px;
+}
+.reco-cons-title {
+    color: #ef4444;
+    font-weight: 600;
+    font-size: 0.8em;
+    margin-bottom: 2px;
+}
+.reco-comment {
+    color: #8b95a5;
+    font-size: 0.88em;
+    line-height: 1.6;
+    margin-top: 6px;
+}
+
+.suggestion-card {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+}
+.suggestion-card:hover {
+    border-color: rgba(37, 99, 235, 0.3);
+}
+.suggestion-card h4 {
+    font-size: 0.95em;
+    font-weight: 600;
+    color: #f0f2f5;
+    margin-bottom: 6px;
+}
+.suggestion-card p {
+    font-size: 0.8em;
+    color: #8b95a5;
+    margin-bottom: 0;
+}
 </style>
 """
 
@@ -1722,32 +1915,32 @@ def render_catalog_results(products):
         hide_index=True,
     )
 
-    with st.expander("📥 Exporter le catalogue"):
-        col_e1, col_e2 = st.columns(2)
-        csv_data = sorted_df.to_csv(index=False, sep=";", encoding="utf-8-sig")
+    st.markdown("<div style='margin-top:16px;'></div>", unsafe_allow_html=True)
+    col_e1, col_e2, col_e3 = st.columns([1, 1, 2])
+    csv_data = sorted_df.to_csv(index=False, sep=";", encoding="utf-8-sig")
 
-        with col_e1:
+    with col_e1:
+        st.download_button(
+            label="Exporter CSV",
+            data=csv_data,
+            file_name=f"catalogue_whey_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv",
+            use_container_width=True,
+            key="cat_csv_download",
+        )
+
+    with col_e2:
+        excel_path = "/tmp/catalogue_export.xlsx"
+        sorted_df.to_excel(excel_path, index=False, sheet_name="Catalogue")
+        with open(excel_path, "rb") as f:
             st.download_button(
-                label="Telecharger CSV",
-                data=csv_data,
-                file_name=f"catalogue_whey_{datetime.now().strftime('%Y%m%d')}.csv",
-                mime="text/csv",
+                label="Exporter Excel",
+                data=f.read(),
+                file_name=f"catalogue_whey_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True,
-                key="cat_csv_download",
+                key="cat_excel_download",
             )
-
-        with col_e2:
-            excel_path = "/tmp/catalogue_export.xlsx"
-            sorted_df.to_excel(excel_path, index=False, sheet_name="Catalogue")
-            with open(excel_path, "rb") as f:
-                st.download_button(
-                    label="Telecharger Excel",
-                    data=f.read(),
-                    file_name=f"catalogue_whey_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
-                    key="cat_excel_download",
-                )
 
 
 # ── SIDEBAR ──
@@ -1866,6 +2059,37 @@ def page_landing():
         </div>
     </div>
     """, unsafe_allow_html=True)
+
+    try:
+        top5 = get_top_products(5)
+    except Exception:
+        top5 = []
+    if top5:
+        rank_labels = ["#1", "#2", "#3", "#4", "#5"]
+        cards_html = ""
+        for i, tp in enumerate(top5):
+            tp_score = tp.get("score_final", 0)
+            tp_color = score_color_10(tp_score)
+            tp_name = html_module.escape(tp.get("name", "")[:40])
+            tp_brand = html_module.escape(tp.get("brand", ""))
+            tp_prot = tp.get("proteines_100g")
+            prot_txt = f"{tp_prot:.0f}g prot/100g" if tp_prot else ""
+            cards_html += f"""
+            <div class='landing-top5-card'>
+                <div class='landing-top5-rank'>{rank_labels[i]}</div>
+                <div class='landing-top5-score' style='color:{tp_color};'>{tp_score:.1f}<span style='font-size:0.5em;color:#8b95a5;'>/10</span></div>
+                <div class='landing-top5-name'>{tp_name}</div>
+                <div class='landing-top5-brand'>{tp_brand}</div>
+                <div class='landing-top5-prot'>{prot_txt}</div>
+            </div>"""
+        st.markdown(f"""
+        <div class='landing-top5' id='comparateur'>
+            <h2>Top 5 des meilleures wheys</h2>
+            <div class='landing-top5-grid'>
+                {cards_html}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
     st.markdown("""
     <div class='landing-cards' id='fonctionnalites'>
@@ -2073,7 +2297,48 @@ def page_compare():
 
     compare_ids = st.session_state.compare_list
     if not compare_ids:
-        st.info("Aucun produit dans le comparateur. Ajoutez des produits depuis le Catalogue.")
+        st.info("Aucun produit dans le comparateur. Ajoutez des produits depuis le Catalogue, ou essayez une comparaison pre-faite :")
+
+        all_prods = cached_get_all_products()
+        scored = [p for p in all_prods if p.get("score_final") is not None]
+
+        native_isolate = sorted(
+            [p for p in scored if p.get("type_whey") in ("native", "isolate")],
+            key=lambda x: -(x.get("score_final") or 0)
+        )[:3]
+
+        best_value = sorted(
+            [p for p in scored if p.get("offer_prix_par_kg") is not None],
+            key=lambda x: -(x.get("score_final") or 0) / max(1, (x.get("offer_prix_par_kg") or 100) / 30)
+        )[:3]
+
+        no_sweetener = sorted(
+            [p for p in scored if not p.get("has_sucralose") and not p.get("has_acesulfame_k") and not p.get("has_aspartame")],
+            key=lambda x: -(x.get("score_final") or 0)
+        )[:3]
+
+        suggestions = [
+            ("Top 3 Isolate / Native", "Les meilleures wheys isolate et native", native_isolate),
+            ("Meilleur rapport qualite/prix", "Score eleve, prix competitif", best_value),
+            ("Top 3 sans edulcorant", "Sans sucralose, sans acesulfame-K", no_sweetener),
+        ]
+
+        cols_s = st.columns(3)
+        for i, (title, desc, prods) in enumerate(suggestions):
+            with cols_s[i]:
+                st.markdown(f"""
+                <div class='suggestion-card'>
+                    <h4>{title}</h4>
+                    <p>{desc}</p>
+                </div>
+                """, unsafe_allow_html=True)
+                names = ", ".join([p.get("name", "")[:30] for p in prods]) if prods else "Aucun produit"
+                st.caption(names)
+                if prods and st.button("Comparer", key=f"suggest_{i}", use_container_width=True, type="primary"):
+                    st.session_state.compare_list = [p["id"] for p in prods]
+                    st.rerun()
+
+        st.divider()
         if st.button("Aller au catalogue", type="primary"):
             st.session_state.page = "catalogue"
             st.rerun()
@@ -2161,6 +2426,37 @@ def page_compare():
                 st.session_state.selected_product_id = p["id"]
                 st.session_state.page = "product"
                 st.rerun()
+
+    st.divider()
+    compare_csv_rows = []
+    for p in products:
+        compare_csv_rows.append({
+            "Produit": p.get("name", ""),
+            "Marque": p.get("brand", ""),
+            "Score": p.get("score_final"),
+            "Proteines/100g": p.get("proteines_100g"),
+            "Prix/kg": p.get("offer_prix_par_kg"),
+            "Type": p.get("type_whey", ""),
+            "BCAA/100g prot": p.get("bcaa_per_100g_prot"),
+            "Leucine": p.get("leucine_g"),
+        })
+    compare_df = pd.DataFrame(compare_csv_rows)
+    csv_compare = compare_df.to_csv(index=False, sep=";", encoding="utf-8-sig")
+
+    col_exp1, col_exp2 = st.columns(2)
+    with col_exp1:
+        st.download_button(
+            label="Exporter la comparaison (CSV)",
+            data=csv_compare,
+            file_name=f"comparaison_whey_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv",
+            use_container_width=True,
+            key="compare_csv_download",
+        )
+    with col_exp2:
+        share_ids = ",".join(str(p["id"]) for p in products)
+        share_text = f"Ma comparaison ProteinScan : {', '.join(p.get('name', '')[:30] for p in products)}"
+        st.text_input("Partager (IDs des produits)", value=share_ids, key="share_ids_input", disabled=True)
 
 
 # ── PRODUCT DETAIL PAGE ──
@@ -2279,8 +2575,7 @@ def page_product():
     detail_col, offers_col = st.columns([1, 1])
 
     with detail_col:
-        st.subheader("Details nutritionnels")
-        st.markdown(f"- **Proteines / 100g** : {prot:.1f}g" if is_valid(prot) else "- **Proteines / 100g** : N/D")
+        st.subheader("Valeurs nutritionnelles")
 
         kcal = product.get("kcal_per_100g")
         carbs = product.get("carbs_per_100g")
@@ -2290,18 +2585,34 @@ def page_product():
         salt = product.get("salt_per_100g")
         fiber = product.get("fiber_per_100g")
 
-        if is_valid(kcal):
-            st.markdown(f"- **Calories** : {kcal:.0f} kcal")
-        if is_valid(carbs):
-            sugar_txt = f" (dont sucres {sugar:.1f}g)" if is_valid(sugar) else ""
-            st.markdown(f"- **Glucides** : {carbs:.1f}g{sugar_txt}")
-        if is_valid(fat):
-            sat_txt = f" (dont sat. {sat_fat:.1f}g)" if is_valid(sat_fat) else ""
-            st.markdown(f"- **Lipides** : {fat:.1f}g{sat_txt}")
-        if is_valid(salt):
-            st.markdown(f"- **Sel** : {salt:.2f}g")
+        def fmt_val(v, unit="g", decimals=1):
+            if not is_valid(v):
+                return "<span style='color:#555e6e;'>-</span>"
+            if decimals == 0:
+                return f"{v:.0f} {unit}"
+            elif decimals == 2:
+                return f"{v:.2f} {unit}"
+            return f"{v:.1f} {unit}"
+
+        table_rows = ""
+        table_rows += f"<tr><td class='nt-label'>Energie</td><td class='nt-value'>{fmt_val(kcal, 'kcal', 0)}</td></tr>"
+        table_rows += f"<tr class='nt-highlight'><td class='nt-label'>Proteines</td><td class='nt-value'>{fmt_val(prot)}</td></tr>"
+        table_rows += f"<tr><td class='nt-label'>Glucides</td><td class='nt-value'>{fmt_val(carbs)}</td></tr>"
+        if is_valid(sugar):
+            table_rows += f"<tr><td class='nt-sub'>dont sucres</td><td class='nt-value'>{fmt_val(sugar)}</td></tr>"
+        table_rows += f"<tr><td class='nt-label'>Lipides</td><td class='nt-value'>{fmt_val(fat)}</td></tr>"
+        if is_valid(sat_fat):
+            table_rows += f"<tr><td class='nt-sub'>dont acides gras satures</td><td class='nt-value'>{fmt_val(sat_fat)}</td></tr>"
         if is_valid(fiber):
-            st.markdown(f"- **Fibres** : {fiber:.1f}g")
+            table_rows += f"<tr><td class='nt-label'>Fibres</td><td class='nt-value'>{fmt_val(fiber)}</td></tr>"
+        table_rows += f"<tr><td class='nt-label'>Sel</td><td class='nt-value'>{fmt_val(salt, 'g', 2)}</td></tr>"
+
+        st.markdown(f"""
+        <table class='nutrition-table'>
+            <thead><tr><th colspan='2'>Pour 100g</th></tr></thead>
+            <tbody>{table_rows}</tbody>
+        </table>
+        """, unsafe_allow_html=True)
 
         st.markdown(f"- **BCAA / 100g prot** : {bcaa:.1f}g" if is_valid(bcaa) else "- **BCAA / 100g prot** : N/D")
         st.markdown(f"- **Leucine** : {leucine:.1f}g" if is_valid(leucine) else "- **Leucine** : N/D")
@@ -2457,6 +2768,77 @@ def page_product():
             if st.button("Signaler", key=f"flag_review_{rev['id']}", type="secondary"):
                 flag_review(rev["id"])
                 st.info("Avis signale. Merci.")
+
+    st.divider()
+    st.subheader("Recommandations de la communaute")
+
+    usage_contexts = ["Musculation", "Endurance", "Perte de poids", "Sante generale", "Recuperation"]
+    levels = ["Debutant", "Intermediaire", "Avance", "Tous niveaux"]
+
+    with st.expander("Ecrire une recommandation"):
+        with st.form("reco_form"):
+            reco_context = st.selectbox("Contexte d'utilisation", usage_contexts, key="reco_context")
+            reco_level = st.selectbox("Recommande pour", levels, key="reco_level")
+            reco_pros = st.text_input("Points positifs", key="reco_pros", placeholder="Ex: Bon gout, bonne dissolution...")
+            reco_cons = st.text_input("Points negatifs", key="reco_cons", placeholder="Ex: Prix eleve, texture granuleuse...")
+            reco_comment = st.text_area("Votre recommandation", key="reco_comment", placeholder="Partagez votre experience et pourquoi vous recommandez (ou non) ce produit...")
+            reco_submit = st.form_submit_button("Publier ma recommandation", use_container_width=True)
+
+            if reco_submit:
+                if not reco_comment.strip():
+                    st.error("Veuillez ecrire un commentaire.")
+                else:
+                    result = create_recommendation(
+                        product_id=product_id,
+                        user_id=user["id"],
+                        usage_context=reco_context,
+                        level=reco_level,
+                        pros=reco_pros.strip(),
+                        cons=reco_cons.strip(),
+                        comment=reco_comment.strip(),
+                    )
+                    if result:
+                        st.success("Recommandation publiee !")
+                        st.rerun()
+                    else:
+                        st.error("Erreur lors de la publication.")
+
+    recos = get_recommendations_for_product(product_id)
+    if recos:
+        context_groups = {}
+        for r in recos:
+            ctx = r.get("usage_context", "Autre")
+            context_groups.setdefault(ctx, []).append(r)
+
+        for ctx, group in context_groups.items():
+            st.markdown(f"**{ctx}** ({len(group)} recommandation{'s' if len(group) > 1 else ''})")
+            for rec in group:
+                rec_date = rec.get("created_at", "")
+                if hasattr(rec_date, "strftime"):
+                    rec_date = rec_date.strftime("%d/%m/%Y")
+                rec_author = html_module.escape(rec.get("display_name", "Utilisateur"))
+                rec_level = html_module.escape(rec.get("level", ""))
+                rec_pros = html_module.escape(rec.get("pros", ""))
+                rec_cons = html_module.escape(rec.get("cons", ""))
+                rec_comment = html_module.escape(rec.get("comment", ""))
+
+                level_badge = f"<span class='ps-badge ps-badge-blue'>{rec_level}</span>" if rec_level else ""
+                pros_html = f"<div class='reco-pros'><div class='reco-pros-title'>+ Points positifs</div>{rec_pros}</div>" if rec_pros else ""
+                cons_html = f"<div class='reco-cons'><div class='reco-cons-title'>- Points negatifs</div>{rec_cons}</div>" if rec_cons else ""
+
+                st.markdown(f"""
+                <div class='reco-card'>
+                    <div class='reco-header'>
+                        <div class='reco-author'>{rec_author}</div>
+                        <div class='reco-date'>{rec_date}</div>
+                    </div>
+                    <div class='reco-badges'>{level_badge}</div>
+                    <div class='reco-pros-cons'>{pros_html}{cons_html}</div>
+                    <div class='reco-comment'>{rec_comment}</div>
+                </div>
+                """, unsafe_allow_html=True)
+    else:
+        st.markdown("<div style='color:#8b95a5;font-size:0.9em;'>Aucune recommandation pour le moment. Soyez le premier a partager votre experience !</div>", unsafe_allow_html=True)
 
 
 # ── ADMIN PAGE ──
