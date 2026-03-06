@@ -24,6 +24,7 @@ from db import (
     get_user_preferences, save_user_preferences,
     ensure_product_images_table, get_product_images, add_product_image, delete_product_image,
     ensure_user_favorites_table, toggle_favorite, is_favorite, get_user_favorites, get_user_favorites_count,
+    get_connection, release_connection, upsert_product, upsert_offer,
 )
 from auth import hash_password, verify_password
 from page_validator import validate_url_debug, is_whey_product_page
@@ -1330,6 +1331,16 @@ st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
 if st.session_state.get("theme") == "light":
     st.markdown(LIGHT_CSS, unsafe_allow_html=True)
 
+def render_theme_toggle():
+    is_dark = st.session_state.get("theme", "dark") == "dark"
+    icon = "☀️" if is_dark else "🌙"
+    tooltip = "Mode clair" if is_dark else "Mode sombre"
+    cols = st.columns([0.92, 0.08])
+    with cols[1]:
+        if st.button(icon, key="theme_toggle_top", help=tooltip):
+            st.session_state.theme = "light" if is_dark else "dark"
+            st.rerun()
+
 api_key = os.environ.get("BRAVE_API_KEY", "") or os.environ.get("BRAVE_SEARCH_API_KEY", "")
 
 for key in ["user", "page", "selected_product_id"]:
@@ -1770,6 +1781,7 @@ def render_catalog_results(products):
             "url": p.get("offer_url", ""),
             "poids_kg": p.get("offer_poids_kg"),
             "proteines_100g": p.get("proteines_100g"),
+            "image_url": p.get("image_url", ""),
             "type_whey": p.get("type_whey", "unknown"),
             "origin_label": p.get("origin_label", "Inconnu"),
             "has_sucralose": p.get("has_sucralose", False),
@@ -2198,11 +2210,6 @@ def render_sidebar():
                 save_user_preferences(user["id"], wp, wh, wpx)
                 st.success("Preferences enregistrees !")
                 st.rerun()
-
-        theme_label = "Mode clair" if st.session_state.theme == "dark" else "Mode sombre"
-        if st.button(theme_label, width="stretch", key="toggle_theme"):
-            st.session_state.theme = "light" if st.session_state.theme == "dark" else "dark"
-            st.rerun()
 
         st.markdown("---")
         if st.button("Se deconnecter", width="stretch"):
@@ -3333,6 +3340,49 @@ def page_admin():
 
     st.markdown("")
 
+    st.markdown("<div class='admin-section'><div class='admin-section-title'>Importer un produit par URL</div><div class='admin-section-desc'>Ajoutez manuellement un produit en collant l'URL de sa page.</div>", unsafe_allow_html=True)
+    import_url = st.text_input("URL du produit", placeholder="https://www.nutripure.fr/fr/proteines/whey-isolate.html", key="manual_import_url")
+    if st.button("Importer ce produit", key="btn_manual_import", type="primary"):
+        if not import_url or not import_url.startswith("http"):
+            st.warning("Entrez une URL valide (commencant par http).")
+        else:
+            with st.spinner("Extraction des donnees en cours..."):
+                try:
+                    from scraper import split_product_offer, compute_confidence_v2
+                    result = extract_product_data(import_url, force_browser=True)
+                    if result and result.get("name"):
+                        conf = compute_confidence_v2(result, has_jsonld=bool(result.get("_has_jsonld")), needs_js_render=result.get("_needs_js_render", False))
+                        product_data, offer_data = split_product_offer(result)
+                        pid = upsert_product(product_data)
+                        if pid and offer_data.get("url"):
+                            upsert_offer(pid, offer_data)
+                        p = get_product_by_id(pid) if pid else None
+                        if p:
+                            offers_for_score = get_product_offers(pid)
+                            best_ppkg = None
+                            for o in offers_for_score:
+                                ppkg = o.get("prix_par_kg")
+                                if ppkg and (best_ppkg is None or ppkg < best_ppkg):
+                                    best_ppkg = ppkg
+                            score = calculate_final_score_10(p, best_ppkg)
+                            if score is not None:
+                                conn_s = get_connection()
+                                cur_s = conn_s.cursor()
+                                cur_s.execute("UPDATE products SET score_final = %s WHERE id = %s", (score, pid))
+                                conn_s.commit()
+                                cur_s.close()
+                                release_connection(conn_s)
+                        cached_get_all_products.clear()
+                        cached_get_catalog_stats.clear()
+                        st.success(f"Produit importe : {product_data.get('name', '?')} (confiance: {conf:.0%})")
+                    else:
+                        st.error("Impossible d'extraire les donnees de cette page. Verifiez l'URL.")
+                except Exception as e:
+                    st.error(f"Erreur lors de l'import : {str(e)}")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("")
+
     disc_col, refresh_col = st.columns(2)
 
     with disc_col:
@@ -3802,6 +3852,8 @@ def page_admin():
 
 
 # ── ROUTER ──
+
+render_theme_toggle()
 
 page = st.session_state.page
 
