@@ -1,20 +1,37 @@
 import os
 import re
+import time
+import logging
 import psycopg2
 import psycopg2.extras
 import psycopg2.pool
 from datetime import datetime
 
+logger = logging.getLogger(__name__)
+
 _connection_pool = None
+
+_DB_RETRY_ATTEMPTS = 5
+_DB_RETRY_BASE_DELAY = 2
 
 
 def _get_pool():
     global _connection_pool
     if _connection_pool is None or _connection_pool.closed:
-        _connection_pool = psycopg2.pool.ThreadedConnectionPool(
-            minconn=2, maxconn=10,
-            dsn=os.environ["DATABASE_URL"],
-        )
+        dsn = os.environ["DATABASE_URL"]
+        for attempt in range(1, _DB_RETRY_ATTEMPTS + 1):
+            try:
+                _connection_pool = psycopg2.pool.ThreadedConnectionPool(
+                    minconn=2, maxconn=10, dsn=dsn,
+                )
+                return _connection_pool
+            except psycopg2.OperationalError as e:
+                if attempt < _DB_RETRY_ATTEMPTS:
+                    delay = _DB_RETRY_BASE_DELAY * attempt
+                    logger.warning(f"[DB] Pool creation attempt {attempt}/{_DB_RETRY_ATTEMPTS} failed ({e}), retrying in {delay}s...")
+                    time.sleep(delay)
+                else:
+                    raise
     return _connection_pool
 
 
@@ -30,6 +47,32 @@ def _check_conn(conn):
         return False
 
 
+def _connect_with_retry():
+    dsn = os.environ["DATABASE_URL"]
+    for attempt in range(1, _DB_RETRY_ATTEMPTS + 1):
+        try:
+            conn = psycopg2.connect(dsn)
+            return conn
+        except psycopg2.OperationalError as e:
+            err_msg = str(e).lower()
+            is_transient = (
+                "endpoint is disabled" in err_msg
+                or "désactivé" in err_msg
+                or "the endpoint" in err_msg
+                or "connection refused" in err_msg
+                or "timeout" in err_msg
+                or "could not connect" in err_msg
+                or "server closed" in err_msg
+                or "connection reset" in err_msg
+            )
+            if is_transient and attempt < _DB_RETRY_ATTEMPTS:
+                delay = _DB_RETRY_BASE_DELAY * attempt
+                logger.warning(f"[DB] Connection attempt {attempt}/{_DB_RETRY_ATTEMPTS} failed ({e}), retrying in {delay}s...")
+                time.sleep(delay)
+            else:
+                raise
+
+
 def get_connection():
     try:
         pool = _get_pool()
@@ -39,11 +82,15 @@ def get_connection():
                 pool.putconn(conn, close=True)
             except Exception:
                 pass
-            conn = psycopg2.connect(os.environ["DATABASE_URL"])
+            conn = _connect_with_retry()
         conn.autocommit = False
         return conn
+    except psycopg2.OperationalError:
+        global _connection_pool
+        _connection_pool = None
+        return _connect_with_retry()
     except Exception:
-        return psycopg2.connect(os.environ["DATABASE_URL"])
+        return _connect_with_retry()
 
 
 def release_connection(conn):
