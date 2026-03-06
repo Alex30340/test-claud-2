@@ -2036,6 +2036,17 @@ def render_catalog_results(products):
     else:
         sorted_df = filtered_df
 
+    max_per_brand = 2
+    if not search_query and not filter_favs:
+        brand_counts = {}
+        keep_idx = []
+        for idx in sorted_df.index:
+            brand = str(sorted_df.loc[idx, "marque"]).strip()
+            brand_counts[brand] = brand_counts.get(brand, 0) + 1
+            if brand_counts[brand] <= max_per_brand:
+                keep_idx.append(idx)
+        sorted_df = sorted_df.loc[keep_idx]
+
     PRODUCTS_PER_PAGE = 20
     total_products = len(sorted_df)
     total_pages = max(1, (total_products + PRODUCTS_PER_PAGE - 1) // PRODUCTS_PER_PAGE)
