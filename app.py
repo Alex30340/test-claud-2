@@ -18,6 +18,7 @@ from db import (
     create_review, get_reviews_for_product, get_average_rating,
     flag_review, hide_review, get_flagged_reviews,
     get_data_quality_stats, cleanup_catalog, get_incomplete_products_for_rescrape,
+    create_recommendation, get_recommendations_for_product, get_top_products,
 )
 from auth import hash_password, verify_password
 from page_validator import validate_url_debug, is_whey_product_page
@@ -26,17 +27,17 @@ from resolver import resolve_url_debug
 init_db()
 
 
-@st.cache_data(ttl=60)
-def cached_get_all_products(min_confidence=0.0, limit=200):
+@st.cache_data(ttl=300)
+def cached_get_all_products(min_confidence=0.0, limit=300):
     return get_all_products(min_confidence=min_confidence, limit=limit)
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=120)
 def cached_get_product_by_id(product_id):
     return get_product_by_id(product_id)
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=120)
 def cached_get_product_offers(product_id):
     return get_product_offers(product_id)
 
@@ -51,7 +52,7 @@ def cached_get_average_rating(product_id):
     return get_average_rating(product_id)
 
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=300)
 def cached_get_catalog_stats():
     return get_catalog_stats()
 

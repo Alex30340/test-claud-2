@@ -233,6 +233,19 @@ def init_db():
             created_at TIMESTAMP NOT NULL DEFAULT NOW()
         );
 
+        CREATE TABLE IF NOT EXISTS recommendations (
+            id SERIAL PRIMARY KEY,
+            product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            usage_context VARCHAR(50) NOT NULL,
+            level VARCHAR(50),
+            pros TEXT,
+            cons TEXT,
+            comment TEXT NOT NULL,
+            is_hidden BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        );
+
         CREATE INDEX IF NOT EXISTS idx_offers_product_id ON offers(product_id);
         CREATE INDEX IF NOT EXISTS idx_offers_active ON offers(product_id, confidence DESC, updated_at DESC) WHERE is_active = TRUE;
         CREATE INDEX IF NOT EXISTS idx_reviews_product_id ON reviews(product_id);
@@ -240,6 +253,7 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_scans_user_id ON scans(user_id, created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_scan_items_scan_id ON scan_items(scan_id);
         CREATE INDEX IF NOT EXISTS idx_products_score ON products(score_final DESC NULLS LAST);
+        CREATE INDEX IF NOT EXISTS idx_recommendations_product_id ON recommendations(product_id);
     """)
     conn.commit()
 
@@ -1041,6 +1055,64 @@ def get_flagged_reviews(limit: int = 50) -> list[dict]:
         )
         rows = [dict(r) for r in cur.fetchall()]
         return rows
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def create_recommendation(product_id: int, user_id: int, usage_context: str,
+                          level: str, pros: str, cons: str, comment: str) -> bool:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """INSERT INTO recommendations (product_id, user_id, usage_context, level, pros, cons, comment)
+               VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+            (product_id, user_id, usage_context, level, pros, cons, comment),
+        )
+        conn.commit()
+        return True
+    except Exception:
+        conn.rollback()
+        return False
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def get_recommendations_for_product(product_id: int) -> list[dict]:
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute(
+            """SELECT r.*, u.display_name
+               FROM recommendations r
+               JOIN users u ON r.user_id = u.id
+               WHERE r.product_id = %s AND r.is_hidden = FALSE
+               ORDER BY r.created_at DESC""",
+            (product_id,),
+        )
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def get_top_products(limit: int = 5) -> list[dict]:
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute(
+            """SELECT p.id, p.name, p.brand, p.proteines_100g, p.score_final, 
+                      p.score_proteique, p.score_sante, p.type_whey, p.image_url,
+                      p.bcaa_per_100g_prot, p.leucine_g, p.origin_label
+               FROM products p
+               WHERE p.score_final IS NOT NULL
+               ORDER BY p.score_final DESC
+               LIMIT %s""",
+            (limit,),
+        )
+        return [dict(r) for r in cur.fetchall()]
     finally:
         cur.close()
         release_connection(conn)
