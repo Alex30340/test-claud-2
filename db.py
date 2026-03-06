@@ -373,6 +373,114 @@ def init_db():
     cur.close()
     release_connection(conn)
 
+    _seed_if_empty()
+
+
+def _seed_if_empty():
+    import json, os
+    seed_path = os.path.join(os.path.dirname(__file__), "seed_data.json")
+    if not os.path.exists(seed_path):
+        return
+
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT COUNT(*) FROM products")
+        count = cur.fetchone()[0]
+        if count >= 10:
+            cur.close()
+            release_connection(conn)
+            return
+
+        with open(seed_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        products = data.get("products", [])
+        offers = data.get("offers", [])
+
+        if not products:
+            cur.close()
+            release_connection(conn)
+            return
+
+        logger.info(f"[SEED] Seeding {len(products)} products and {len(offers)} offers...")
+
+        prod_cols = None
+        for p in products:
+            if prod_cols is None:
+                prod_cols = [k for k in p.keys() if k != "id"]
+            vals = []
+            for c in prod_cols:
+                v = p.get(c)
+                if isinstance(v, (dict, list)):
+                    v = json.dumps(v)
+                vals.append(v)
+            placeholders = ", ".join(["%s"] * len(prod_cols))
+            col_names = ", ".join(prod_cols)
+            try:
+                cur.execute(
+                    f"INSERT INTO products ({col_names}) VALUES ({placeholders}) ON CONFLICT DO NOTHING",
+                    vals
+                )
+            except Exception as e:
+                conn.rollback()
+                logger.warning(f"[SEED] Error inserting product {p.get('name', '?')}: {e}")
+                continue
+        conn.commit()
+
+        cur.execute("SELECT id, name FROM products")
+        prod_map = {}
+        for row in cur.fetchall():
+            prod_map[row[1]] = row[0]
+
+        old_to_new = {}
+        for p in products:
+            old_id = p.get("id")
+            name = p.get("name")
+            if name in prod_map:
+                old_to_new[old_id] = prod_map[name]
+
+        offer_cols_skip = {"id"}
+        for o in offers:
+            old_pid = o.get("product_id")
+            new_pid = old_to_new.get(old_pid)
+            if not new_pid:
+                continue
+            o_copy = {k: v for k, v in o.items() if k not in offer_cols_skip}
+            o_copy["product_id"] = new_pid
+            cols = list(o_copy.keys())
+            vals = []
+            for c in cols:
+                v = o_copy[c]
+                if isinstance(v, (dict, list)):
+                    v = json.dumps(v)
+                vals.append(v)
+            placeholders = ", ".join(["%s"] * len(cols))
+            col_names = ", ".join(cols)
+            try:
+                cur.execute(
+                    f"INSERT INTO offers ({col_names}) VALUES ({placeholders}) ON CONFLICT DO NOTHING",
+                    vals
+                )
+            except Exception as e:
+                conn.rollback()
+                logger.warning(f"[SEED] Error inserting offer: {e}")
+                continue
+        conn.commit()
+
+        cur.execute("SELECT COUNT(*) FROM products")
+        new_count = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM offers")
+        offer_count = cur.fetchone()[0]
+        logger.info(f"[SEED] Seeding complete: {new_count} products, {offer_count} offers")
+
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"[SEED] Seeding error: {e}")
+    finally:
+        cur.close()
+        release_connection(conn)
+
 
 def create_user(email: str, password_hash: str, display_name: str) -> dict | None:
     conn = get_connection()

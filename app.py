@@ -94,6 +94,11 @@ st.set_page_config(
 GLOBAL_CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200');
+
+[data-testid="stExpander"] summary span[data-testid="stMarkdownContainer"] p {
+    font-family: 'Inter', sans-serif !important;
+}
 
 html, body, [class*="st-"] {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
@@ -1962,7 +1967,7 @@ def render_catalog_results(products):
     with pcol2:
         nav1, nav2, nav3 = st.columns(3)
         with nav1:
-            if st.button("◀ Precedent", disabled=(current_page == 0), key="cat_prev", use_container_width=True):
+            if st.button("◀ Precedent", disabled=(current_page == 0), key="cat_prev", width="stretch"):
                 st.session_state.cat_page = current_page - 1
                 st.rerun()
         with nav2:
@@ -1971,7 +1976,7 @@ def render_catalog_results(products):
                 st.session_state.cat_page = new_page - 1
                 st.rerun()
         with nav3:
-            if st.button("Suivant ▶", disabled=(current_page >= total_pages - 1), key="cat_next", use_container_width=True):
+            if st.button("Suivant ▶", disabled=(current_page >= total_pages - 1), key="cat_next", width="stretch"):
                 st.session_state.cat_page = current_page + 1
                 st.rerun()
 
@@ -1985,25 +1990,25 @@ def render_catalog_results(products):
         if product_id:
             btn_col1, btn_col2, btn_col3, btn_col4 = st.columns([1, 1, 1, 3])
             with btn_col1:
-                if st.button("Voir fiche", key=f"cat_view_{product_id}_{rank}", use_container_width=True):
+                if st.button("Voir fiche", key=f"cat_view_{product_id}_{rank}", width="stretch"):
                     st.session_state.selected_product_id = int(product_id)
                     st.session_state.page = "product"
                     st.rerun()
             with btn_col2:
                 compare_ids = st.session_state.compare_list
                 if int(product_id) in compare_ids:
-                    if st.button("- Retirer", key=f"cat_rmcmp_{product_id}_{rank}", use_container_width=True):
+                    if st.button("- Retirer", key=f"cat_rmcmp_{product_id}_{rank}", width="stretch"):
                         st.session_state.compare_list = [x for x in compare_ids if x != int(product_id)]
                         st.rerun()
                 elif len(compare_ids) < 5:
-                    if st.button("+ Comparer", key=f"cat_addcmp_{product_id}_{rank}", use_container_width=True):
+                    if st.button("+ Comparer", key=f"cat_addcmp_{product_id}_{rank}", width="stretch"):
                         st.session_state.compare_list.append(int(product_id))
                         st.rerun()
             with btn_col3:
                 if user_ref:
                     fav = is_favorite(user_ref["id"], int(product_id))
                     fav_label = "Retirer favori" if fav else "Favori"
-                    if st.button(fav_label, key=f"cat_fav_{product_id}_{rank}", use_container_width=True):
+                    if st.button(fav_label, key=f"cat_fav_{product_id}_{rank}", width="stretch"):
                         toggle_favorite(user_ref["id"], int(product_id))
                         st.rerun()
 
@@ -2059,7 +2064,7 @@ def render_catalog_results(products):
     st.dataframe(
         sorted_df[existing_cols],
         column_config=column_config,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 
@@ -2073,7 +2078,7 @@ def render_catalog_results(products):
             data=csv_data,
             file_name=f"catalogue_whey_{datetime.now().strftime('%Y%m%d')}.csv",
             mime="text/csv",
-            use_container_width=True,
+            width="stretch",
             key="cat_csv_download",
         )
 
@@ -2086,7 +2091,7 @@ def render_catalog_results(products):
                 data=f.read(),
                 file_name=f"catalogue_whey_{datetime.now().strftime('%Y%m%d')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
+                width="stretch",
                 key="cat_excel_download",
             )
 
@@ -2119,15 +2124,15 @@ def render_sidebar():
             </div>
             """, unsafe_allow_html=True)
 
-            if st.button("Catalogue", use_container_width=True, type="primary" if current_page in ("catalogue", "product") else "secondary", key="nav_catalogue"):
+            if st.button("Catalogue", width="stretch", type="primary" if current_page in ("catalogue", "product") else "secondary", key="nav_catalogue"):
                 st.session_state.page = "catalogue"
                 st.rerun()
 
             st.markdown("---")
-            if st.button("Se connecter", use_container_width=True, type="primary", key="nav_login_sidebar"):
+            if st.button("Se connecter", width="stretch", type="primary", key="nav_login_sidebar"):
                 st.session_state.page = "login"
                 st.rerun()
-            if st.button("Creer un compte", use_container_width=True, key="nav_register_sidebar"):
+            if st.button("Creer un compte", width="stretch", key="nav_register_sidebar"):
                 st.session_state.page = "register"
                 st.rerun()
             return
@@ -2153,7 +2158,7 @@ def render_sidebar():
 
         for page_id, label in nav_pages:
             is_active = current_page == page_id or (page_id == "catalogue" and current_page == "product")
-            if st.button(label, use_container_width=True, type="primary" if is_active else "secondary", key=f"nav_{page_id}"):
+            if st.button(label, width="stretch", type="primary" if is_active else "secondary", key=f"nav_{page_id}"):
                 st.session_state.page = page_id
                 st.rerun()
 
@@ -2168,12 +2173,12 @@ def render_sidebar():
                     st.markdown(f"**{icon}** {n['message']}")
                     st.caption(str(n_date))
                     if n.get("link_product_id"):
-                        if st.button("Voir", key=f"notif_go_{n['id']}", use_container_width=True):
+                        if st.button("Voir", key=f"notif_go_{n['id']}", width="stretch"):
                             st.session_state.selected_product_id = n["link_product_id"]
                             st.session_state.page = "product"
                             mark_notifications_read(user["id"])
                             st.rerun()
-                if st.button("Tout marquer comme lu", key="mark_all_read", use_container_width=True):
+                if st.button("Tout marquer comme lu", key="mark_all_read", width="stretch"):
                     mark_notifications_read(user["id"])
                     st.rerun()
 
@@ -2189,18 +2194,18 @@ def render_sidebar():
             total_w = wp + wh + wpx
             if total_w != 100:
                 st.warning(f"Total: {total_w}% (doit etre 100%)")
-            if st.button("Sauvegarder", key="save_prefs", use_container_width=True, disabled=(total_w != 100)):
+            if st.button("Sauvegarder", key="save_prefs", width="stretch", disabled=(total_w != 100)):
                 save_user_preferences(user["id"], wp, wh, wpx)
                 st.success("Preferences enregistrees !")
                 st.rerun()
 
         theme_label = "Mode clair" if st.session_state.theme == "dark" else "Mode sombre"
-        if st.button(theme_label, use_container_width=True, key="toggle_theme"):
+        if st.button(theme_label, width="stretch", key="toggle_theme"):
             st.session_state.theme = "light" if st.session_state.theme == "dark" else "dark"
             st.rerun()
 
         st.markdown("---")
-        if st.button("Se deconnecter", use_container_width=True):
+        if st.button("Se deconnecter", width="stretch"):
             logout()
             st.rerun()
 
@@ -2251,13 +2256,13 @@ def page_landing():
 
     col_cta_left, col_cta_mid, col_cta_right = st.columns([2, 2, 2])
     with col_cta_mid:
-        if st.button("Commencer gratuitement", type="primary", use_container_width=True, key="hero_cta"):
+        if st.button("Commencer gratuitement", type="primary", width="stretch", key="hero_cta"):
             st.session_state.page = "register"
             st.rerun()
-        if st.button("Voir le catalogue", use_container_width=True, key="hero_browse"):
+        if st.button("Voir le catalogue", width="stretch", key="hero_browse"):
             st.session_state.page = "catalogue"
             st.rerun()
-        if st.button("Se connecter", use_container_width=False, key="hero_login"):
+        if st.button("Se connecter", width="content", key="hero_login"):
             st.session_state.page = "login"
             st.rerun()
 
@@ -2364,11 +2369,11 @@ def page_landing():
 
     col_b1, col_b2 = st.columns(2)
     with col_b1:
-        if st.button("Creer un compte gratuitement", type="primary", use_container_width=True, key="landing_register"):
+        if st.button("Creer un compte gratuitement", type="primary", width="stretch", key="landing_register"):
             st.session_state.page = "register"
             st.rerun()
     with col_b2:
-        if st.button("J'ai deja un compte", use_container_width=True, key="landing_login"):
+        if st.button("J'ai deja un compte", width="stretch", key="landing_login"):
             st.session_state.page = "login"
             st.rerun()
 
@@ -2398,7 +2403,7 @@ def page_login():
     with st.form("login_form"):
         email = st.text_input("Email")
         password = st.text_input("Mot de passe", type="password")
-        submitted = st.form_submit_button("Se connecter", use_container_width=True)
+        submitted = st.form_submit_button("Se connecter", width="stretch")
 
         if submitted:
             if not email or not password:
@@ -2422,11 +2427,11 @@ def page_login():
 
     col_s1, col_s2 = st.columns(2)
     with col_s1:
-        if st.button("Pas de compte ? Creer un compte", use_container_width=True, key="switch_to_register"):
+        if st.button("Pas de compte ? Creer un compte", width="stretch", key="switch_to_register"):
             st.session_state.page = "register"
             st.rerun()
     with col_s2:
-        if st.button("Retour a l'accueil", use_container_width=True, key="back_landing_from_login"):
+        if st.button("Retour a l'accueil", width="stretch", key="back_landing_from_login"):
             st.session_state.page = "landing"
             st.rerun()
 
@@ -2449,7 +2454,7 @@ def page_register():
         new_email = st.text_input("Email", key="signup_email")
         new_password = st.text_input("Mot de passe", type="password", key="signup_password")
         new_password2 = st.text_input("Confirmer le mot de passe", type="password", key="signup_password2")
-        signup_submitted = st.form_submit_button("Creer mon compte", use_container_width=True)
+        signup_submitted = st.form_submit_button("Creer mon compte", width="stretch")
 
         if signup_submitted:
             if not new_name or not new_email or not new_password:
@@ -2487,11 +2492,11 @@ def page_register():
 
     col_s1, col_s2 = st.columns(2)
     with col_s1:
-        if st.button("Deja un compte ? Se connecter", use_container_width=True, key="switch_to_login"):
+        if st.button("Deja un compte ? Se connecter", width="stretch", key="switch_to_login"):
             st.session_state.page = "login"
             st.rerun()
     with col_s2:
-        if st.button("Retour a l'accueil", use_container_width=True, key="back_landing_from_register"):
+        if st.button("Retour a l'accueil", width="stretch", key="back_landing_from_register"):
             st.session_state.page = "landing"
             st.rerun()
 
@@ -2526,7 +2531,7 @@ def page_catalogue():
                         st.markdown(f"<img src='{html_module.escape(rv_img)}' style='width:60px;height:60px;object-fit:contain;border-radius:6px;background:rgba(255,255,255,0.04);' onerror=\"this.style.display='none'\" />", unsafe_allow_html=True)
                     sc_txt = f"{rv_score:.1f}" if rv_score else "N/A"
                     st.markdown(f"**{sc_txt}** {html_module.escape(rv_name)}")
-                    if st.button("Voir", key=f"rv_{rvp['id']}", use_container_width=True):
+                    if st.button("Voir", key=f"rv_{rvp['id']}", width="stretch"):
                         st.session_state.selected_product_id = rvp["id"]
                         st.session_state.page = "product"
                         st.rerun()
@@ -2581,7 +2586,7 @@ def page_compare():
                 """, unsafe_allow_html=True)
                 names = ", ".join([p.get("name", "")[:30] for p in prods]) if prods else "Aucun produit"
                 st.caption(names)
-                if prods and st.button("Comparer", key=f"suggest_{i}", use_container_width=True, type="primary"):
+                if prods and st.button("Comparer", key=f"suggest_{i}", width="stretch", type="primary"):
                     st.session_state.compare_list = [p["id"] for p in prods]
                     st.rerun()
 
@@ -2665,11 +2670,11 @@ def page_compare():
             if url:
                 st.markdown(f"[Voir le produit]({url})")
 
-            if st.button("Retirer", key=f"remove_compare_{p['id']}", use_container_width=True):
+            if st.button("Retirer", key=f"remove_compare_{p['id']}", width="stretch"):
                 st.session_state.compare_list = [x for x in st.session_state.compare_list if x != p["id"]]
                 st.rerun()
 
-            if st.button("Voir fiche", key=f"goto_product_{p['id']}", use_container_width=True):
+            if st.button("Voir fiche", key=f"goto_product_{p['id']}", width="stretch"):
                 st.session_state.selected_product_id = p["id"]
                 st.session_state.page = "product"
                 st.rerun()
@@ -2697,7 +2702,7 @@ def page_compare():
             data=csv_compare,
             file_name=f"comparaison_whey_{datetime.now().strftime('%Y%m%d')}.csv",
             mime="text/csv",
-            use_container_width=True,
+            width="stretch",
             key="compare_csv_download",
         )
     with col_exp2:
@@ -2824,7 +2829,7 @@ def page_product():
         if not is_public and user:
             fav_status = is_favorite(user["id"], product_id)
             fav_btn_label = "Retirer des favoris" if fav_status else "Ajouter aux favoris"
-            if st.button(fav_btn_label, key="prod_fav_toggle", use_container_width=True):
+            if st.button(fav_btn_label, key="prod_fav_toggle", width="stretch"):
                 toggle_favorite(user["id"], product_id)
                 st.rerun()
 
@@ -2990,12 +2995,12 @@ def page_product():
     if not is_public:
         compare_ids = st.session_state.compare_list
         if product_id in compare_ids:
-            if st.button("Retirer du comparateur", use_container_width=True, key="prod_remove_compare"):
+            if st.button("Retirer du comparateur", width="stretch", key="prod_remove_compare"):
                 st.session_state.compare_list = [x for x in compare_ids if x != product_id]
                 st.rerun()
         else:
             if len(compare_ids) < 5:
-                if st.button("Ajouter au comparateur", type="primary", use_container_width=True, key="prod_add_compare"):
+                if st.button("Ajouter au comparateur", type="primary", width="stretch", key="prod_add_compare"):
                     st.session_state.compare_list.append(product_id)
                     st.rerun()
 
@@ -3021,7 +3026,7 @@ def page_product():
             if best_prix_kg:
                 st.caption(f"Prix actuel : {best_prix_kg:.0f} EUR/kg")
             target = st.number_input("M'alerter quand le prix descend sous (EUR/kg)", min_value=1, max_value=500, value=int(best_prix_kg * 0.9) if best_prix_kg else 50, key="alert_target")
-            if st.button("Creer l'alerte", key="create_alert", use_container_width=True):
+            if st.button("Creer l'alerte", key="create_alert", width="stretch"):
                 create_price_alert(user["id"], product_id, float(target))
                 st.success(f"Alerte creee ! Vous serez notifie quand le prix descend sous {target} EUR/kg.")
 
@@ -3072,7 +3077,7 @@ def page_product():
                 review_title = st.text_input("Titre (optionnel)", key="review_title")
                 review_comment = st.text_area("Commentaire", key="review_comment", placeholder="Partagez votre experience avec ce produit...")
                 review_purchased = st.text_input("Achete sur... (optionnel)", key="review_purchased", placeholder="Ex: nutrimuscle.com")
-                review_submit = st.form_submit_button("Publier mon avis", use_container_width=True)
+                review_submit = st.form_submit_button("Publier mon avis", width="stretch")
 
                 if review_submit:
                     if not review_comment.strip():
@@ -3143,7 +3148,7 @@ def page_product():
                 reco_pros = st.text_input("Points positifs", key="reco_pros", placeholder="Ex: Bon gout, bonne dissolution...")
                 reco_cons = st.text_input("Points negatifs", key="reco_cons", placeholder="Ex: Prix eleve, texture granuleuse...")
                 reco_comment = st.text_area("Votre recommandation", key="reco_comment", placeholder="Partagez votre experience et pourquoi vous recommandez (ou non) ce produit...")
-                reco_submit = st.form_submit_button("Publier ma recommandation", use_container_width=True)
+                reco_submit = st.form_submit_button("Publier ma recommandation", width="stretch")
 
                 if reco_submit:
                     if not reco_comment.strip():
@@ -3261,7 +3266,7 @@ def page_admin():
                             "Marchand": p.get("merchant", ""),
                             "Manquant": ", ".join(missing),
                         })
-                    st.dataframe(pd.DataFrame(inc_data), use_container_width=True, hide_index=True)
+                    st.dataframe(pd.DataFrame(inc_data), width="stretch", hide_index=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("")
@@ -3354,7 +3359,7 @@ def page_admin():
                 disc_whey_filter = st.checkbox("Filtre whey strict (2+ signaux)", value=True, key="disc_whey_filter")
                 disc_use_resolver = st.checkbox("Resolveur d'URL (crawl 1 niveau)", value=True, key="disc_resolver")
 
-            if st.button("🚀 Lancer un Discovery", type="primary", use_container_width=True, key="btn_discovery"):
+            if st.button("🚀 Lancer un Discovery", type="primary", width="stretch", key="btn_discovery"):
                 status_container = st.empty()
                 progress_bar = st.progress(0)
                 detail_text = st.empty()
@@ -3409,7 +3414,7 @@ def page_admin():
     with refresh_col:
         st.markdown("<div class='admin-section'><div class='admin-section-title'>Refresh</div><div class='admin-section-desc'>Met a jour les prix et la disponibilite des offres existantes.</div>", unsafe_allow_html=True)
 
-        if st.button("🔄 Lancer un Refresh", type="primary", use_container_width=True, key="btn_refresh"):
+        if st.button("🔄 Lancer un Refresh", type="primary", width="stretch", key="btn_refresh"):
             status_container_r = st.empty()
             progress_bar_r = st.progress(0)
             detail_text_r = st.empty()
@@ -3458,7 +3463,7 @@ def page_admin():
     st.info(f"{_missing_count} produit(s) sans aminogramme complet ou macros etendus.")
 
     if _missing_count > 0:
-        if st.button("🧬 Lancer la re-analyse", type="primary", use_container_width=True, key="btn_reanalysis"):
+        if st.button("🧬 Lancer la re-analyse", type="primary", width="stretch", key="btn_reanalysis"):
             from scraper import run_reanalysis
             status_ra = st.empty()
             progress_ra = st.progress(0)
@@ -3525,7 +3530,7 @@ def page_admin():
 
         st.dataframe(
             pd.DataFrame(runs_data),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -3593,7 +3598,7 @@ def page_admin():
                         "Produits": d["product_count"],
                         "Confiance moy.": f"{avg_conf:.0%}" if avg_conf else "—",
                     })
-                st.dataframe(pd.DataFrame(dom_data), use_container_width=True, hide_index=True)
+                st.dataframe(pd.DataFrame(dom_data), width="stretch", hide_index=True)
             else:
                 st.info("Aucune offre active.")
 
@@ -3604,7 +3609,7 @@ def page_admin():
                     "Marque": b["brand"].title(),
                     "Produits": b["product_count"],
                 } for b in disc_stats["brand_details"]]
-                st.dataframe(pd.DataFrame(brand_data), use_container_width=True, hide_index=True)
+                st.dataframe(pd.DataFrame(brand_data), width="stretch", hide_index=True)
             else:
                 st.info("Aucune marque detectee.")
 
@@ -3633,12 +3638,12 @@ def page_admin():
                 for ei, eimg in enumerate(existing_images[:5]):
                     with img_del_cols[ei]:
                         st.markdown(f"<img src='{html_module.escape(eimg['image_url'])}' style='width:80px;height:80px;object-fit:contain;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);' onerror=\"this.style.display='none'\" />", unsafe_allow_html=True)
-                        if st.button("Supprimer", key=f"admin_del_img_{eimg['id']}", use_container_width=True):
+                        if st.button("Supprimer", key=f"admin_del_img_{eimg['id']}", width="stretch"):
                             delete_product_image(eimg["id"])
                             st.rerun()
 
             new_img_url = st.text_input("URL de la nouvelle image", key="admin_new_img_url", placeholder="https://...")
-            if st.button("Ajouter cette image", key="admin_add_img", use_container_width=True):
+            if st.button("Ajouter cette image", key="admin_add_img", width="stretch"):
                 if new_img_url and new_img_url.startswith("http"):
                     add_product_image(selected_prod_id, new_img_url)
                     st.success("Image ajoutee !")
