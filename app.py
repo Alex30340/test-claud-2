@@ -2284,7 +2284,23 @@ def page_landing():
         top5 = []
     if top5:
         rank_labels = ["#1", "#2", "#3", "#4", "#5"]
-        cards_html = ""
+        top5_html = f"""
+        <style>
+        .lt5 {{ max-width:880px; margin:0 auto; padding:40px 40px 20px 40px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; }}
+        .lt5 h2 {{ font-size:1.4em; font-weight:700; color:#f0f2f5; text-align:center; margin-bottom:24px; }}
+        .lt5-grid {{ display:flex; gap:14px; justify-content:center; flex-wrap:wrap; }}
+        .lt5-card {{ flex:1; min-width:150px; max-width:170px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:18px 14px; text-align:center; transition:border-color 0.2s; }}
+        .lt5-card:hover {{ border-color:rgba(255,255,255,0.18); }}
+        .lt5-rank {{ font-size:0.7em; font-weight:700; color:#f59e0b; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px; }}
+        .lt5-score {{ font-size:1.5em; font-weight:800; margin-bottom:6px; }}
+        .lt5-name {{ font-size:0.82em; font-weight:600; color:#f0f2f5; line-height:1.3; margin-bottom:4px; }}
+        .lt5-brand {{ font-size:0.72em; color:#8b95a5; }}
+        .lt5-prot {{ font-size:0.72em; color:#6ba1eb; margin-top:6px; }}
+        </style>
+        <div class='lt5'>
+            <h2>Top 5 des meilleures wheys</h2>
+            <div class='lt5-grid'>
+        """
         for i, tp in enumerate(top5):
             tp_score = tp.get("score_final", 0)
             tp_color = score_color_10(tp_score)
@@ -2292,22 +2308,16 @@ def page_landing():
             tp_brand = html_module.escape(tp.get("brand", ""))
             tp_prot = tp.get("proteines_100g")
             prot_txt = f"{tp_prot:.0f}g prot/100g" if tp_prot else ""
-            cards_html += f"""
-            <div class='landing-top5-card'>
-                <div class='landing-top5-rank'>{rank_labels[i]}</div>
-                <div class='landing-top5-score' style='color:{tp_color};'>{tp_score:.1f}<span style='font-size:0.5em;color:#8b95a5;'>/10</span></div>
-                <div class='landing-top5-name'>{tp_name}</div>
-                <div class='landing-top5-brand'>{tp_brand}</div>
-                <div class='landing-top5-prot'>{prot_txt}</div>
-            </div>"""
-        st.markdown(f"""
-        <div class='landing-top5' id='comparateur'>
-            <h2>Top 5 des meilleures wheys</h2>
-            <div class='landing-top5-grid'>
-                {cards_html}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+            top5_html += f"""
+                <div class='lt5-card'>
+                    <div class='lt5-rank'>{rank_labels[i]}</div>
+                    <div class='lt5-score' style='color:{tp_color};'>{tp_score:.1f}<span style='font-size:0.5em;color:#8b95a5;'>/10</span></div>
+                    <div class='lt5-name'>{tp_name}</div>
+                    <div class='lt5-brand'>{tp_brand}</div>
+                    <div class='lt5-prot'>{prot_txt}</div>
+                </div>"""
+        top5_html += "</div></div>"
+        st.html(top5_html)
 
     st.markdown("""
     <div class='landing-cards' id='fonctionnalites'>
