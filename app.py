@@ -1510,13 +1510,13 @@ def get_whey_badge(wtype):
         "concentrate": ("📦 Concentrate", "ps-badge-gray"),
     }
     label, cls = badges.get(wt, ("❓ Inconnu", "ps-badge-gray"))
-    return f"<span class='ps-badge {cls}'>{label}</span>"
+    return f"<span class='ps-badge {cls}' translate='no'>{label}</span>"
 
 
 def get_origin_badge(origin_label):
     ol = (origin_label or "Inconnu")
     if ol == "France":
-        return "<span class='ps-badge ps-badge-green'>🇫🇷 France</span>"
+        return "<span class='ps-badge ps-badge-green' translate='no'>🇫🇷 France</span>"
     if ol == "EU":
         return "<span class='ps-badge ps-badge-blue'>🇪🇺 Union Europeenne</span>"
     return "<span class='ps-badge ps-badge-gray'>❓ Origine inconnue</span>"
