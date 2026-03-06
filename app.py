@@ -1259,10 +1259,14 @@ CARD_CSS = ""
 LIGHT_CSS = """
 <style>
 .stApp { background: #f5f7fa !important; }
+.stApp p, .stApp span, .stApp div, .stApp li, .stApp td, .stApp th,
+.stApp label, .stApp .stMarkdown { color: #1e293b !important; }
+.stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6 { color: #0f172a !important; }
+.stApp a { color: #2563eb !important; }
+.stApp code { background: #e2e8f0 !important; color: #334155 !important; }
 section[data-testid="stSidebar"] { background: #ffffff !important; border-right: 1px solid #e2e8f0 !important; }
-section[data-testid="stSidebar"] .stMarkdown h1,
-section[data-testid="stSidebar"] .stMarkdown h2,
-section[data-testid="stSidebar"] .stMarkdown h3 { color: #1a202c !important; }
+section[data-testid="stSidebar"] p, section[data-testid="stSidebar"] span,
+section[data-testid="stSidebar"] div, section[data-testid="stSidebar"] label { color: #334155 !important; }
 div[data-testid="stMetric"] { background: #ffffff !important; border: 1px solid #e2e8f0 !important; }
 div[data-testid="stMetric"] label { color: #64748b !important; }
 div[data-testid="stMetric"] [data-testid="stMetricValue"] { color: #1a202c !important; }
@@ -1272,58 +1276,91 @@ div[data-testid="stMetric"] [data-testid="stMetricValue"] { color: #1a202c !impo
 div[data-testid="stForm"] { background: #ffffff !important; border: 1px solid #e2e8f0 !important; }
 .stTextInput > div > div > input,
 .stTextArea > div > div > textarea,
-.stSelectbox > div > div { background: #ffffff !important; border: 1px solid #e2e8f0 !important; color: #1a202c !important; }
-.stTextInput label, .stTextArea label, .stSelectbox label { color: #64748b !important; }
+.stSelectbox > div > div,
+.stNumberInput > div > div > input { background: #ffffff !important; border: 1px solid #e2e8f0 !important; color: #1a202c !important; }
+.stTextInput label, .stTextArea label, .stSelectbox label,
+.stNumberInput label, .stSlider label, .stCheckbox label,
+.stRadio label, .stToggle label { color: #475569 !important; }
 div[data-testid="stExpander"] { background: #ffffff !important; border: 1px solid #e2e8f0 !important; }
+div[data-testid="stExpander"] summary span { color: #334155 !important; }
+.stCaption, [data-testid="stCaptionContainer"] { color: #64748b !important; }
 hr { border-color: #e2e8f0 !important; }
 .sidebar-user { background: #f8fafc !important; border: 1px solid #e2e8f0 !important; }
 .sidebar-user-name { color: #1a202c !important; }
 .sidebar-user-email { color: #64748b !important; }
 .sidebar-user-plan { color: #2563eb !important; }
+.sidebar-logo-text { color: #1a202c !important; }
 .page-header-title { color: #1a202c !important; }
 .page-subtitle { color: #64748b !important; }
 .stat-card { background: #ffffff !important; border: 1px solid #e2e8f0 !important; }
 .stat-card-label { color: #64748b !important; }
 .stat-card-value { color: #1a202c !important; }
-.ps-card { background: #ffffff !important; border: 1px solid #e2e8f0 !important; }
+.ps-card { background: #ffffff !important; border: 1px solid #e2e8f0 !important; box-shadow: 0 1px 3px rgba(0,0,0,0.06) !important; }
 .ps-title { color: #1a202c !important; }
 .ps-brand { color: #64748b !important; }
 .ps-metric-label { color: #64748b !important; }
 .ps-metric-val { color: #1a202c !important; }
-.ps-quality { color: #64748b !important; }
+.ps-quality { color: #475569 !important; }
+.ps-why { color: #475569 !important; background: rgba(37,99,235,0.04) !important; border-color: rgba(37,99,235,0.1) !important; }
+.ps-rank { color: #1a202c !important; }
+.ps-score-big { color: #1a202c !important; }
+.ps-stars, .ps-stars-sm { color: #f59e0b !important; }
+.ps-sub-label { color: #64748b !important; }
+.ps-link { color: #2563eb !important; }
+.ps-link:hover { color: #1d4ed8 !important; }
+.ps-img-placeholder { background: #f1f5f9 !important; color: #94a3b8 !important; }
+.ps-badge { color: #334155 !important; }
+.ps-badge-green { background: rgba(34,197,94,0.1) !important; color: #16a34a !important; border-color: rgba(34,197,94,0.2) !important; }
+.ps-badge-blue { background: rgba(37,99,235,0.1) !important; color: #2563eb !important; border-color: rgba(37,99,235,0.2) !important; }
+.ps-badge-gold { background: rgba(245,158,11,0.1) !important; color: #d97706 !important; border-color: rgba(245,158,11,0.2) !important; }
+.ps-badge-red { background: rgba(239,68,68,0.1) !important; color: #dc2626 !important; border-color: rgba(239,68,68,0.2) !important; }
+.ps-badge-gray { background: rgba(100,116,139,0.1) !important; color: #475569 !important; border-color: rgba(100,116,139,0.2) !important; }
+.ps-badge-purple { background: rgba(147,51,234,0.1) !important; color: #7c3aed !important; border-color: rgba(147,51,234,0.2) !important; }
+.ps-badge-orange { background: rgba(234,88,12,0.1) !important; color: #c2410c !important; border-color: rgba(234,88,12,0.2) !important; }
+.ps-badge-top { background: rgba(245,158,11,0.12) !important; color: #b45309 !important; border-color: rgba(245,158,11,0.25) !important; }
+.ps-badge-transp { background: rgba(100,116,139,0.05) !important; color: #64748b !important; border-color: rgba(100,116,139,0.2) !important; }
 .review-card, .reco-card { background: #ffffff !important; border: 1px solid #e2e8f0 !important; }
 .review-author, .reco-author { color: #1a202c !important; }
-.review-comment, .reco-comment { color: #64748b !important; }
+.review-comment, .reco-comment { color: #475569 !important; }
 .product-detail-header { background: #ffffff !important; border: 1px solid #e2e8f0 !important; }
 .product-detail-info h1 { color: #1a202c !important; }
 .product-detail-info .brand { color: #64748b !important; }
-.nutrition-table th { background: rgba(37, 99, 235, 0.06) !important; }
+.product-detail-score { color: #1a202c !important; }
+.nutrition-table { background: #ffffff !important; border: 1px solid #e2e8f0 !important; }
+.nutrition-table th { background: rgba(37, 99, 235, 0.06) !important; color: #334155 !important; }
 .nutrition-table td { border-bottom: 1px solid #e2e8f0 !important; color: #475569 !important; }
 .nutrition-table .nt-label { color: #1a202c !important; }
 .nutrition-table .nt-value { color: #1a202c !important; }
 .nutrition-table .nt-sub { color: #64748b !important; }
+.compare-bar { background: #ffffff !important; border: 1px solid #e2e8f0 !important; }
+.compare-bar span { color: #334155 !important; }
 .landing-hero h1 { color: #1a202c !important; }
-.landing-hero p { color: #64748b !important; }
+.landing-hero p { color: #475569 !important; }
 .landing-card { background: #ffffff !important; border: 1px solid #e2e8f0 !important; }
 .landing-card h3 { color: #1a202c !important; }
-.landing-card p { color: #64748b !important; }
+.landing-card p { color: #475569 !important; }
 .landing-top5-name { color: #1a202c !important; }
 .landing-top5-brand { color: #64748b !important; }
 .landing-steps { background: #ffffff !important; border: 1px solid #e2e8f0 !important; }
 .landing-steps h2, .landing-step h4 { color: #1a202c !important; }
-.landing-step p { color: #64748b !important; }
+.landing-step p { color: #475569 !important; }
 .landing-social-proof-num { color: #1a202c !important; }
 .landing-social-proof-label { color: #64748b !important; }
 .landing-navbar { background: rgba(255,255,255,0.95) !important; border-bottom: 1px solid #e2e8f0 !important; }
 .landing-navbar-brand { color: #1a202c !important; }
 .suggestion-card { background: #ffffff !important; border: 1px solid #e2e8f0 !important; }
 .suggestion-card h4 { color: #1a202c !important; }
+.suggestion-card p { color: #475569 !important; }
 .admin-section { background: #ffffff !important; border: 1px solid #e2e8f0 !important; }
 .admin-section-title { color: #1a202c !important; }
+.admin-section-desc { color: #475569 !important; }
 .section-alt { background: #ffffff !important; border: 1px solid #e2e8f0 !important; }
 .login-title { color: #1a202c !important; }
-.login-subtitle { color: #64748b !important; }
-.sidebar-logo-text { color: #1a202c !important; }
+.login-subtitle { color: #475569 !important; }
+[data-testid="stNumberInput"] span,
+[data-testid="stSlider"] span { color: #334155 !important; }
+.stDataFrame { border: 1px solid #e2e8f0 !important; }
+div[data-testid="stToast"] { background: #ffffff !important; border: 1px solid #e2e8f0 !important; color: #334155 !important; }
 </style>
 """
 
