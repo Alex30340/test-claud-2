@@ -24,11 +24,15 @@ The user prefers clear, concise communication. They value iterative development 
     3.  **Regex Fallback**: HTML pattern matching for prices, ingredients, and nutritional information.
     4.  **Advanced Nutrition Extraction**: Utilizes a pipeline combining structured data, HTML tables, and OCR (GPT-4o vision) for comprehensive macro and aminogram analysis.
 - **Strict Product Page Validation**: A `page_validator.py` module ensures that scraped URLs correspond to actual product pages with purchase proof, filtering out blogs, articles, and irrelevant content.
-- **UI/UX**: The Streamlit interface provides a user-friendly experience with:
-    -   Clear navigation (Landing, Login, Register, Dashboard, Catalog, Search, Comparator, Product Detail, Admin).
-    -   Visual scoring (1-10 scale, star ratings), colored confidence badges, and clear explanations for scores.
-    -   Detailed product cards displaying protein, health, and price scores, BCAA/leucine metrics, and key attributes (type, origin, additives).
-    -   Advanced filtering and sorting options for the product catalog.
+- **Curated Catalog**: Only products with complete data (protein, BCAA, score) are displayed. Quality threshold: `score_final IS NOT NULL`.
+- **UI/UX**: Simplified 3-page navigation for authenticated users:
+    -   **Catalogue** (default): Searchable product list with filters (type whey, sort, toggles), pagination (20/page), product cards with scores.
+    -   **Comparateur**: Side-by-side comparison of up to 5 products.
+    -   **Administration**: Pipeline controls, data quality dashboard, catalog management.
+    -   Public pages: Landing, Login, Register.
+    -   Sub-pages: Product Detail (from catalogue).
+    -   Visual scoring (1-10 scale, star ratings), detailed product cards with protein, health, price scores, BCAA/leucine metrics, badges.
+    -   Removed: Dashboard, Scan/Search pages (discovery now admin-only).
 
 ### Key Features
 - **Scoring System (V3)**:
