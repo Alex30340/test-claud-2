@@ -3433,7 +3433,7 @@ def page_admin():
         else:
             with st.spinner("Extraction des donnees en cours..."):
                 try:
-                    from scraper import split_product_offer, compute_confidence_v2
+                    from scraper import extract_product_data, split_product_offer, compute_confidence_v2
                     result = extract_product_data(import_url, force_browser=True)
                     if result and result.get("name"):
                         conf = compute_confidence_v2(result, has_jsonld=bool(result.get("_has_jsonld")), needs_js_render=result.get("_needs_js_render", False))
