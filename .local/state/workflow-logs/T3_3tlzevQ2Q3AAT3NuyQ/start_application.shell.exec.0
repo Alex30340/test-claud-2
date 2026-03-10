@@ -1,0 +1,10 @@
+
+Collecting usage statistics. To deactivate, set browser.gatherUsageStats to false.
+[0m
+[0m
+[34m[1m  You can now view your Streamlit app in your browser.[0m
+[0m
+[34m  Local URL: [0m[1mhttp://localhost:5000[0m
+[34m  Network URL: [0m[1mhttp://172.31.119.2:5000[0m
+[34m  External URL: [0m[1mhttp://34.58.214.227:5000[0m
+[0m
