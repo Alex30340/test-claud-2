@@ -1360,7 +1360,7 @@ def extract_product_data(url: str, force_browser: bool = False) -> dict | None:
             ingredient_count=ingredient_count,
         )
 
-        return {
+        result = {
             "nom": name.strip(),
             "marque": brand.strip() if brand else "",
             "url": url,
@@ -1423,11 +1423,12 @@ def extract_product_data(url: str, force_browser: bool = False) -> dict | None:
             "_used_browser": force_browser,
         }
 
+        # --- Retry avec browser si page JS-heavy et données critiques manquantes ---
         if not force_browser and needs_js:
             missing_critical = (
-                protein_per_100g is None
-                or price is None
-                or not ingredients_text
+                result["proteines_100g"] is None
+                or result["prix"] is None
+                or not result["ingredients"]
             )
             if missing_critical:
                 logger.info(f"[SCRAPER] JS-heavy page with missing data, retrying with browser: {url}")
@@ -1438,10 +1439,10 @@ def extract_product_data(url: str, force_browser: bool = False) -> dict | None:
                     browser_og = extract_og_meta(browser_soup)
                     browser_price, browser_price_source = extract_price(browser_soup)
                     browser_price = validate_price(browser_price)
-                    if browser_price and not price:
+                    if browser_price and not result["prix"]:
                         result["prix"] = browser_price
                         result["_price_source"] = browser_price_source
-                    if not protein_per_100g:
+                    if not result["proteines_100g"]:
                         browser_og_data = {}
                         for meta in browser_soup.find_all("meta", attrs={"property": True}):
                             browser_og_data[meta.get("property", "")] = meta.get("content", "")
@@ -1451,9 +1452,9 @@ def extract_product_data(url: str, force_browser: bool = False) -> dict | None:
                             extra_images=browser_data.get("images"),
                         )
                         browser_protein = browser_multi.get("nutrition", {}).get("protein_per_100g")
-                        if browser_protein and browser_protein >= 15 and browser_protein < 96:
+                        if browser_protein and browser_protein >= 10 and browser_protein < 96:
                             result["proteines_100g"] = browser_protein
-                    if not ingredients_text:
+                    if not result["ingredients"]:
                         browser_text = browser_soup.get_text(" ", strip=True)
                         browser_ingredients = find_ingredients_block(browser_text, soup=browser_soup)
                         if browser_ingredients:
