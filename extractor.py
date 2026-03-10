@@ -27,11 +27,19 @@ def _parse_price_value(value) -> float | None:
         return None
     if isinstance(value, (int, float)):
         v = float(value)
+        # AMÉLIORATION: gérer les prix en centimes (ex: 2999 => 29.99)
+        if v > WHEY_PRICE_MAX and v <= WHEY_PRICE_MAX * 100:
+            v = v / 100
         return v if WHEY_PRICE_MIN <= v <= WHEY_PRICE_MAX else None
     text = str(value).replace(",", ".").replace("\u00a0", "").replace(" ", "").strip()
+    # AMÉLIORATION: gérer les formats "29.99EUR", "EUR29.99"
+    text = re.sub(r"[€$£]|EUR|USD|GBP", "", text, flags=re.I).strip()
     match = re.search(r"(\d+(?:\.\d+)?)", text)
     if match:
         v = float(match.group(1))
+        # AMÉLIORATION: gérer les prix en centimes
+        if v > WHEY_PRICE_MAX and v <= WHEY_PRICE_MAX * 100:
+            v = v / 100
         return v if WHEY_PRICE_MIN <= v <= WHEY_PRICE_MAX else None
     return None
 
@@ -68,7 +76,7 @@ def extract_price_jsonld(soup: BeautifulSoup) -> list[tuple[str, float]]:
                 return False
             t = item.get("@type")
             if isinstance(t, str):
-                return t == "Product"
+                return t in ("Product", "IndividualProduct")
             if isinstance(t, list):
                 return "Product" in t
             return False
@@ -134,6 +142,12 @@ def extract_price_meta(soup: BeautifulSoup) -> list[tuple[str, float]]:
         if p:
             prices.append(("meta_twitter", p))
 
+    # AMÉLIORATION: chercher d'autres balises meta prix
+    for key in ("product:sale_price:amount", "product:original_price:amount"):
+        p = _parse_price_value(meta_map.get(key))
+        if p:
+            prices.append(("meta_sale", p))
+
     return prices
 
 
@@ -143,11 +157,15 @@ def extract_price_next_nuxt(soup: BeautifulSoup) -> list[tuple[str, float]]:
     for script in soup.find_all("script", id="__NEXT_DATA__"):
         try:
             data = json.loads(script.string or "")
-            found = _walk_json(data, "price", max_depth=15)
-            for val in found:
-                p = _parse_price_value(val)
-                if p:
-                    prices.append(("next_data", p))
+            # AMÉLIORATION: chercher aussi "finalPrice", "salePrice", "currentPrice"
+            for price_key in ("price", "finalprice", "saleprice", "currentprice", "amount"):
+                found = _walk_json(data, price_key, max_depth=15)
+                for val in found:
+                    p = _parse_price_value(val)
+                    if p:
+                        prices.append(("next_data", p))
+                        break
+                if prices:
                     break
         except (json.JSONDecodeError, TypeError):
             continue
@@ -157,16 +175,22 @@ def extract_price_next_nuxt(soup: BeautifulSoup) -> list[tuple[str, float]]:
         for pattern_name, regex in [
             ("nuxt", r"window\.__NUXT__\s*=\s*(.+?);\s*(?:</|$)"),
             ("initial_state", r"window\.__INITIAL_STATE__\s*=\s*(.+?);\s*(?:</|$)"),
+            # AMÉLIORATION: détecter d'autres patterns courants
+            ("prestashop", r"prestashop\s*=\s*(.+?);\s*(?:</|$)"),
+            ("drupal", r"drupalSettings\s*=\s*(.+?);\s*(?:</|$)"),
         ]:
             m = re.search(regex, text, re.S)
             if m:
                 try:
                     data = json.loads(m.group(1))
-                    found = _walk_json(data, "price", max_depth=15)
-                    for val in found:
-                        p = _parse_price_value(val)
-                        if p:
-                            prices.append((pattern_name, p))
+                    for price_key in ("price", "finalprice", "saleprice", "currentprice"):
+                        found = _walk_json(data, price_key, max_depth=15)
+                        for val in found:
+                            p = _parse_price_value(val)
+                            if p:
+                                prices.append((pattern_name, p))
+                                break
+                        if prices:
                             break
                 except (json.JSONDecodeError, TypeError, ValueError):
                     pass
@@ -177,14 +201,27 @@ def extract_price_next_nuxt(soup: BeautifulSoup) -> list[tuple[str, float]]:
                 try:
                     data = json.loads(blob)
                     if "price" in str(data).lower():
-                        found = _walk_json(data, "price", max_depth=5)
-                        for val in found:
-                            p = _parse_price_value(val)
-                            if p:
-                                prices.append(("script_json", p))
+                        for price_key in ("price", "finalprice", "saleprice"):
+                            found = _walk_json(data, price_key, max_depth=5)
+                            for val in found:
+                                p = _parse_price_value(val)
+                                if p:
+                                    prices.append(("script_json", p))
+                                    break
+                            if prices:
                                 break
                 except (json.JSONDecodeError, TypeError, ValueError):
                     pass
+
+    # AMÉLIORATION: détecter les prix dans les attributs data-price
+    for el in soup.find_all(attrs={"data-price": True}):
+        p = _parse_price_value(el.get("data-price"))
+        if p:
+            prices.append(("data_attr", p))
+    for el in soup.find_all(attrs={"data-product-price": True}):
+        p = _parse_price_value(el.get("data-product-price"))
+        if p:
+            prices.append(("data_attr", p))
 
     return prices
 
@@ -209,9 +246,13 @@ def _is_crossed_price_element(el) -> bool:
 def extract_price_regex(soup: BeautifulSoup) -> list[tuple[str, float]]:
     prices = []
 
+    # AMÉLIORATION: liste élargie de classes CSS communes
     priority_classes = [
         "current-price", "sale-price", "product-price", "price--current",
         "price-new", "our-price", "final-price", "price-actual",
+        "prix-ttc", "price-ttc", "price__current", "price-box",
+        "woocommerce-Price-amount", "summary-price", "offer-price",
+        "product__price", "pdp-price", "product-info-price",
     ]
     for cls in priority_classes:
         els = soup.find_all(class_=re.compile(re.escape(cls), re.I))
@@ -230,37 +271,43 @@ def extract_price_regex(soup: BeautifulSoup) -> list[tuple[str, float]]:
         r'(\d+[.,]\d{2})\s*€\s*(?:ttc|ht)',
         r'(\d+[.,]\d{2})\s*€',
         r'€\s*(\d+[.,]\d{2})',
+        # AMÉLIORATION: patterns avec espace entre chiffres et €
+        r'(\d+[.,]\d{2})\s*euros?',
+        r'(\d+)\s*€',
     ]
 
     body = soup.find("body")
     if body:
         html_text = str(body)
+        cart_patterns = [
+            re.compile(r"ajouter\s+au\s+panier", re.I),
+            re.compile(r"add\s+to\s+cart", re.I),
+            re.compile(r"acheter\s+maintenant", re.I),
+            re.compile(r"commander", re.I),
+        ]
+        for cart_pattern in cart_patterns:
+            cart_match = cart_pattern.search(html_text)
+            if cart_match:
+                start = max(0, cart_match.start() - 800)
+                end = min(len(html_text), cart_match.end() + 500)
+                zone = html_text[start:end]
 
-        cart_zones = re.finditer(
-            r'(?:ajouter\s+au\s+panier|add\s+to\s+cart|acheter|commander)',
-            html_text, re.I,
-        )
-        for cart_match in cart_zones:
-            start = max(0, cart_match.start() - 1500)
-            end = min(len(html_text), cart_match.end() + 500)
-            zone = html_text[start:end]
-
-            for pat in proximity_patterns:
-                m = re.search(pat, zone, re.I)
-                if m:
-                    val_str = m.group(1).replace(",", ".")
-                    p = _parse_price_value(val_str)
-                    if p:
-                        zone_lower = zone[max(0, m.start() - 100):m.end() + 50].lower()
-                        if not NOISE_CONTEXTS.search(zone_lower):
-                            crossed_check = zone[max(0, m.start() - 60):m.end() + 10]
-                            if not re.search(r'<(?:del|s|strike)\b', crossed_check, re.I):
-                                if not re.search(r'class="[^"]*(?:old|was|crossed|barre)', crossed_check, re.I):
-                                    prices.append(("regex_cart", p))
-                                    break
+                for pat in proximity_patterns:
+                    m = re.search(pat, zone, re.I)
+                    if m:
+                        val_str = m.group(1).replace(",", ".")
+                        p = _parse_price_value(val_str)
+                        if p:
+                            zone_lower = zone[max(0, m.start() - 100):m.end() + 50].lower()
+                            if not NOISE_CONTEXTS.search(zone_lower):
+                                crossed_check = zone[max(0, m.start() - 60):m.end() + 10]
+                                if not re.search(r'<(?:del|s|strike)\b', crossed_check, re.I):
+                                    if not re.search(r'class="[^"]*(?:old|was|crossed|barre)', crossed_check, re.I):
+                                        prices.append(("regex_cart", p))
+                                        break
 
     if not prices:
-        for cls in ["price", "prix"]:
+        for cls in ["price", "prix", "montant", "amount"]:
             els = soup.find_all(class_=re.compile(cls, re.I))
             for el in els:
                 if _is_crossed_price_element(el):
@@ -270,6 +317,15 @@ def extract_price_regex(soup: BeautifulSoup) -> list[tuple[str, float]]:
                     prices.append(("html_generic", p))
                     break
             if prices:
+                break
+
+    # AMÉLIORATION: chercher dans les span/div avec itemprop="price"
+    if not prices:
+        for el in soup.find_all(attrs={"itemprop": "price"}):
+            val = el.get("content") or el.get_text(strip=True)
+            p = _parse_price_value(val)
+            if p:
+                prices.append(("microdata_price", p))
                 break
 
     return prices
@@ -296,8 +352,12 @@ def extract_price(soup: BeautifulSoup) -> tuple[float | None, str]:
     source_priority = {
         "jsonld_offer": 0, "jsonld_spec": 1, "jsonld_low": 2,
         "meta_product_price_amount": 3, "meta_og_price_amount": 4, "meta_twitter": 5,
+        "meta_sale": 3,
         "next_data": 6, "nuxt": 7, "initial_state": 8, "script_json": 9,
+        "data_attr": 5,
+        "microdata_price": 4,
         "html_priority": 10, "regex_cart": 11, "html_generic": 12,
+        "prestashop": 7, "drupal": 8,
     }
     all_prices.sort(key=lambda x: source_priority.get(x[0], 99))
 
@@ -369,11 +429,17 @@ def extract_weight_kg(soup: BeautifulSoup, product_name: str = "", jsonld: dict 
                 candidates.append((f"html_{tag_name}", w))
 
     weight_els = soup.find_all(["span", "div", "p", "li", "select", "option"],
-                               class_=re.compile(r"weight|poids|size|taille|format|variant", re.I))
+                               class_=re.compile(r"weight|poids|size|taille|format|variant|contenance", re.I))
     for el in weight_els:
         w = _parse_weight(el.get_text(strip=True))
         if w and 0.2 <= w <= 5.0:
             candidates.append(("html_class", w))
+
+    # AMÉLIORATION: chercher dans les attributs data
+    for el in soup.find_all(attrs={"data-weight": True}):
+        w = _parse_weight(el.get("data-weight", ""))
+        if w and 0.2 <= w <= 5.0:
+            candidates.append(("data_weight", w))
 
     if candidates:
         for src, w in candidates:
@@ -386,6 +452,9 @@ def extract_weight_kg(soup: BeautifulSoup, product_name: str = "", jsonld: dict 
         r"(?:poids|contenance|format|taille|net\s*wt)\s*[:\s]*(\d+(?:\.\d+)?)\s*kg",
         r"(?:poids|contenance|format|taille|net\s*wt)\s*[:\s]*(\d{3,5})\s*g(?:r|ramme)?",
         r"(\d+(?:\.\d+)?)\s*kg\s*(?:de\s+)?(?:whey|prot[ée]ine|poudre)",
+        # AMÉLIORATION: patterns supplémentaires
+        r"quantit[ée]\s*[:\s]*(\d+(?:\.\d+)?)\s*kg",
+        r"(\d+(?:\.\d+)?)\s*kg\s*(?:net|brut)",
     ]
     for pat in weight_patterns:
         m = re.search(pat, page_text)
